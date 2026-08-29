@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CS8632;CS8765</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Stellar.TargetLens</RootNamespace>
+    <AssemblyName>Stellar.TargetLens</AssemblyName>
+    <Version>2.0.0</Version>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- Framework 2.2.0 ships the BarElement overlay props (Overlay01 / OverlayColor / OverlayInFront) on the
+       published NuGet, so the earlier local-source override is gone — compile straight against the packages.
+       Stellar.Plugin.InteropRefs has no 2.2.0 (build-assets package, versions independently; unchanged since 2.0.0). -->
+  <ItemGroup>
+    <PackageReference Include="Stellar.Abstractions"       Version="2.2.0" />
+    <PackageReference Include="Stellar.PluginContracts"    Version="2.2.0" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/targetlens-icon.png" LogicalName="Stellar.TargetLens.targetlens-icon.png" />
+    <!-- English-translated buff name/description dump (game data is Chinese). Loaded by TranslatedBuffText.
+         Kept inside the project's Resources/ (colocated with the icon) so it can't be lost as a loose Mod-root file. -->
+    <EmbeddedResource Include="Resources\BuffTable.json" LogicalName="Stellar.TargetLens.BuffTable.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="resources/**" />
+  </ItemGroup>
+
+</Project>
