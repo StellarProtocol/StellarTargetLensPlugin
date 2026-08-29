@@ -14,6 +14,7 @@ public sealed partial class Plugin
     private IDisposable    _launcherEntry  = null!;   // desktop launcher tile; disposed in Dispose()
     private bool           _targetHudOnlyMine;        // config-backed: filter effect tiles to caster == local player
     private bool           _breakDiag;                // config-backed: TEMPORARY break-gauge diagnostic logging
+    private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
 
     private void RegisterSettings()
     {
@@ -65,6 +66,11 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => "Break-gauge diagnostic (log to BepInEx)"),
                 }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
+                    new TextElement(() => "Show hidden effects"),
+                }, Gap: 6f),
                 new SeparatorElement(),
                 new RowElement(new HudElement[]
                 {
@@ -83,5 +89,20 @@ public sealed partial class Plugin
         { Group = LauncherGroup.Plugin,
           // Gameplay tool: only surface its launcher tile while in-world.
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World });
+    }
+
+    // Master "Show hidden effects" toggle. Persists, flips the tracker's list source (full vs display-filtered),
+    // and invalidates the lazily-loaded picker tables so an already-open Select window repopulates live — the
+    // Name/Icon filter in LoadSelectBuffTable depends on this flag.
+    private void SetShowHidden(bool on)
+    {
+        _showHidden = on;
+        _cfg.Set<bool>("show_hidden", on);
+        _cfg.Save();
+        _targetBuff.ShowHidden = on;
+        _buffTabLoaded = false;
+        EnsureBuffTabLoaded();
+        ApplyDebuffTabFilter(_dtFilter);
+        ApplyBuffTabFilter(_btFilter);
     }
 }

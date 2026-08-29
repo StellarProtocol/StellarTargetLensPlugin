@@ -52,6 +52,8 @@ public sealed partial class Plugin : IStellarPlugin
         _targetBuff.OnlyMine = _targetHudOnlyMine;
         _breakDiag           = _cfg.Get<bool>("break_diag", false);
         _targetInfo.BreakDiag = _breakDiag;
+        _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
+        _targetBuff.ShowHidden = _showHidden;
         RegisterSettings();
         RegisterSelectWindow();   // effect picker opened from the settings window's "Select effects…" button
 

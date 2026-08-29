@@ -59,6 +59,11 @@ internal sealed class TargetBuffTracker
     // local uuid resolves nonzero. Never hides everything when self can't be resolved (see RebuildLists).
     public bool OnlyMine { get; set; }
 
+    // When true, iterate the FULL unfiltered buff list (pBuffList_/buffList_) so internal/no-icon buffs appear;
+    // when false (default), iterate the game's display-filtered "showed" list (pShowedBuffList_/showedBuffList_).
+    // Set from Plugin on load and whenever the "Show hidden effects" toggle changes.
+    public bool ShowHidden { get; set; }
+
     // User's per-effect show/hide selection (buffs + debuffs, each with an include-only/exclude mode). When set,
     // RebuildLists skips rows the selection hides. Null (unset) shows everything (default until wired in).
     public TargetEffectSelection? Selection { get; set; }
@@ -117,7 +122,7 @@ internal sealed class TargetBuffTracker
         if (buffComp != null)
         {
             if (!_showedResolved) ResolveShowedList(buffComp);
-            var list = _piShowedList?.GetValue(buffComp);
+            var list = ActiveList?.GetValue(buffComp);
             if (list != null)
             {
                 foreach (var item in IterList(list))
@@ -329,22 +334,30 @@ internal sealed class TargetBuffTracker
     }
 
     private bool          _showedResolved;
-    private PropertyInfo? _piShowedList;
+    private PropertyInfo? _piFullList;     // pBuffList_ / buffList_        — unfiltered  (ShowHidden ON)
+    private PropertyInfo? _piShowedList;   // pShowedBuffList_ / showedBuffList_ — display-filtered (ShowHidden OFF)
 
+    // Resolve BOTH list sources once; ActiveList picks between them at read-time by the ShowHidden flag.
     private void ResolveShowedList(object comp)
     {
         _showedResolved = true;
-        PropertyInfo? best = null; int bestPrio = 99;
+        PropertyInfo? full = null;   int fullPrio   = 99;
+        PropertyInfo? showed = null; int showedPrio = 99;
         foreach (var p in comp.GetType().GetProperties(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance))
         {
-            // Prefer the FULL unfiltered lists so ALL buffs/debuffs show — not just the game's display-filtered
-            // "showed" set. Fall back to the showed lists only if no full list exists on this build.
-            int prio = p.Name switch { "pBuffList_" => 0, "buffList_" => 1, "pShowedBuffList_" => 2, "showedBuffList_" => 3, _ => 99 };
-            if (prio < bestPrio) { best = p; bestPrio = prio; if (bestPrio == 0) break; }
+            int fp = p.Name switch { "pBuffList_" => 0, "buffList_" => 1, _ => 99 };
+            if (fp < fullPrio)   { full   = p; fullPrio   = fp; }
+            int sp = p.Name switch { "pShowedBuffList_" => 0, "showedBuffList_" => 1, _ => 99 };
+            if (sp < showedPrio) { showed = p; showedPrio = sp; }
         }
-        _piShowedList = best;
-        _services.Log.Info($"[TargetBuff] showed list: {_piShowedList?.Name ?? "not found"}");
+        // Cross-fall-back so neither is null on a build that lacks one set.
+        _piFullList   = full   ?? showed;
+        _piShowedList = showed ?? full;
+        _services.Log.Info($"[TargetBuff] lists: full={_piFullList?.Name ?? "not found"} showed={_piShowedList?.Name ?? "not found"}");
     }
+
+    // The buff list to iterate this frame: full (unfiltered) when ShowHidden, else the display-filtered showed list.
+    private PropertyInfo? ActiveList => ShowHidden ? _piFullList : _piShowedList;
 
     private bool          _itemResolved;
     private PropertyInfo? _piItemUuid;

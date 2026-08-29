@@ -80,7 +80,7 @@ public sealed partial class Plugin
 
             var dIds  = new List<int>(); var dNames = new List<string>();
             var bIds  = new List<int>(); var bNames = new List<string>();
-            PropertyInfo? piKvp = null, piId = null, piName = null, piType = null, piDesc = null;
+            PropertyInfo? piKvp = null, piId = null, piName = null, piType = null, piDesc = null, piIcon = null;
             var dDescs = new List<string>(); var bDescs = new List<string>();
 
             foreach (var item in SettingsReflectEnumerate(values))
@@ -101,10 +101,19 @@ public sealed partial class Plugin
                     piName = rt.GetProperty("Name",     BindingFlags.Public | BindingFlags.Instance);
                     piType = rt.GetProperty("BuffType", BindingFlags.Public | BindingFlags.Instance);
                     piDesc = rt.GetProperty("Desc",     BindingFlags.Public | BindingFlags.Instance);
+                    piIcon = rt.GetProperty("Icon",     BindingFlags.Public | BindingFlags.Instance);
                 }
                 int id = (int)(piId?.GetValue(row) ?? 0);
                 if (id <= 0) continue;
                 string gameName = (string?)(piName?.GetValue(row)) ?? "";
+                // Show-hidden OFF (default): exclude the ~8000 internal/no-icon rows by filtering on the RAW game
+                // Name/Icon — same gate as CooldownBar. ON: keep every id>0 row. The DISPLAY label below still runs
+                // through the EffectOverrides → translation → gameName → "#id" resolver regardless.
+                if (!_showHidden)
+                {
+                    string icon = (string?)(piIcon?.GetValue(row)) ?? "";
+                    if (string.IsNullOrEmpty(gameName) || string.IsNullOrEmpty(icon)) continue;
+                }
                 string desc = (string?)(piDesc?.GetValue(row)) ?? "";
                 // Display name priority (mirrors the HUD's ResolveEffectName, including the manual override dict):
                 // EffectOverrides → English-translation JSON → game Name → "#<id>". No Name/Icon filtering — every id>0 row appears.
