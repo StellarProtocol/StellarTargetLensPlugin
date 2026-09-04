@@ -1,0 +1,207 @@
+using System;
+using System.Reflection;
+using Il2CppInterop.Runtime;
+using Stellar.Abstractions.Services;
+
+namespace Stellar.TargetLens;
+
+/// <summary>
+/// Interop machinery for the threat/aggro read (see <c>TargetInfoTracker.Threat.cs</c> for the orchestration).
+/// A near-copy of the shield read (<c>TargetInfoTracker.ShieldRead.cs</c>) adapted to <c>AttrHateList (474)</c> /
+/// <c>Zproto.HateInfo</c>. Obtains the concrete <c>Google.Protobuf.Collections.RepeatedField&lt;Zproto.HateInfo&gt;</c>
+/// behind the <c>Zproto.IAttr</c> interface wrapper that <c>ZEntity.GetLuaAttr(474)</c> returns, via three
+/// techniques tried in order and cached per session:
+/// <list type="number">
+///   <item><b>Technique 1</b> — typed <c>GetAttr&lt;RepeatedField&lt;HateInfo&gt;&gt;(EAttrType,bool)</c>. Reuses the
+///     already-resolved open <c>GetAttr&lt;T&gt;</c> definition, closed over the interop
+///     <c>RepeatedField&lt;HateInfo&gt;</c>. Returns the list directly. Expected to win here (the instantiation
+///     exists on this build), but confirmed only in-game.</item>
+///   <item><b>Technique 2</b> — native <c>get_Value</c> invoke on the wrapper pointer, then re-wrap the result.</item>
+///   <item><b>Technique 3</b> — native read of the <c>value_</c> field off the wrapper pointer, then re-wrap.</item>
+/// </list>
+/// Shares the static helpers <c>NativePtr</c>/<c>Unwrap</c> and the <c>GetLuaAttr</c> resolve with the shield read.
+/// Every technique is fully guarded (throw → null, outcome recorded).
+/// </summary>
+internal sealed partial class TargetInfoTracker
+{
+    // ── Interop handles (resolved once) ─────────────────────────────────────────
+    private bool        _threatInteropResolved;
+    private Type?       _hateInfoInteropType;      // Zproto.HateInfo (interop)
+    private Type?       _closedRepeatedHateType;   // RepeatedField<HateInfo> (interop, closed)
+    private MethodInfo? _miGetAttrHate;            // T1: ZEntity.GetAttr<RepeatedField<HateInfo>>(EAttrType,bool)
+    private object?     _hateAttrBox;              // boxed EAttrType value 474
+
+    // Cached winning technique for the session (0 = not yet proven). Once a technique returns a non-null list we
+    // lock to it — later frames run only that one (a null then just means "no hate list this frame").
+    private int    _hateTech;
+    private string _h1Out = "", _h2Out = "", _h3Out = ""; // per-technique outcome for [ThreatDiag]
+
+    // Resolve the interop types + the typed GetAttr method + the boxed attr value. Idempotent; safe to call every
+    // frame. Depends on EnsureApi() having run (it caches _miGetAttrLong + the attr enum boxes) — guaranteed here
+    // because a non-null LastTargetEntity implies EnsureApi succeeded during Poll().
+    private bool EnsureThreatInterop()
+    {
+        if (_threatInteropResolved) return true;
+        _threatInteropResolved = true;
+        try
+        {
+            _hateInfoInteropType = StellarInterop.FindType("Zproto.HateInfo");
+            var openRepeated     = StellarInterop.FindType("Google.Protobuf.Collections.RepeatedField`1");
+            if (_hateInfoInteropType != null && openRepeated != null)
+            {
+                try { _closedRepeatedHateType = openRepeated.MakeGenericType(_hateInfoInteropType); }
+                catch (Exception ex) { _services.Log.Warning($"[Threat] closed RepeatedField failed: {ex.GetType().Name}"); }
+            }
+
+            // Technique 1 method: recover the open GetAttr<T> definition from the cached long instantiation, then
+            // close it over the concrete RepeatedField<HateInfo> type.
+            if (_miGetAttrLong != null && _closedRepeatedHateType != null)
+            {
+                try { _miGetAttrHate = _miGetAttrLong.GetGenericMethodDefinition().MakeGenericMethod(_closedRepeatedHateType); }
+                catch (Exception ex) { _services.Log.Warning($"[Threat] GetAttr<Repeated> make failed: {ex.GetType().Name}"); }
+            }
+
+            // Boxed EAttrType(474) — derive the enum type from any already-boxed attr enum value.
+            var enumType = _attrHpBox?.GetType();
+            if (enumType != null)
+                try { _hateAttrBox = Enum.ToObject(enumType, AttrHateListId); } catch { }
+
+            _services.Log.Info($"[Threat] interop hateInfo={_hateInfoInteropType != null} " +
+                               $"closedRepeated={_closedRepeatedHateType != null} t1Method={_miGetAttrHate != null} " +
+                               $"attrBox={_hateAttrBox != null}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _services.Log.Warning($"[Threat] interop resolve error: {ex.Message}");
+            return true; // resolved (with whatever succeeded); techniques self-guard on their missing pieces
+        }
+    }
+
+    // Acquire the concrete hate list via the cached technique, or (until one is proven) by trying all in order.
+    private object? AcquireHateList(object ent, out int tech)
+    {
+        tech = 0;
+        EnsureThreatInterop();
+
+        if (_hateTech != 0)
+        {
+            tech = _hateTech;
+            return RunHateTechnique(ent, _hateTech); // null now just means "no hate list this frame"
+        }
+        for (int s = 1; s <= 3; s++)
+        {
+            object? list = RunHateTechnique(ent, s);
+            if (list != null) { _hateTech = s; tech = s; return list; }
+        }
+        return null;
+    }
+
+    private object? RunHateTechnique(object ent, int tech)
+    {
+        switch (tech)
+        {
+            case 1:
+                return TryTypedGetAttrHate(ent);
+            case 2:
+            case 3:
+            {
+                object? iattr = GetHateIAttr(ent);
+                if (iattr == null)
+                {
+                    if (tech == 2) _h2Out = "noiattr"; else _h3Out = "noiattr";
+                    return null;
+                }
+                return tech == 2 ? TryNativeGetValueHate(iattr) : TryNativeValueFieldHate(iattr);
+            }
+            default:
+                return null;
+        }
+    }
+
+    // The IAttr interface wrapper via ZEntity.GetLuaAttr(474) — input to techniques 2 + 3. Reuses the shield
+    // read's GetLuaAttr resolve (shared partial member).
+    private object? GetHateIAttr(object ent)
+    {
+        if (!ResolveGetLuaAttr(ent)) return null;
+        try { return _miGetLuaAttr!.Invoke(ent, new object[] { AttrHateListId }); }
+        catch { return null; }
+    }
+
+    // ── Technique 1 — typed GetAttr<RepeatedField<HateInfo>> (bypasses the interface wrapper) ──
+    private object? TryTypedGetAttrHate(object ent)
+    {
+        if (_miGetAttrHate == null || _hateAttrBox == null) { _h1Out = "unavail"; return null; }
+        try
+        {
+            object? r = _miGetAttrHate.Invoke(ent, new object[] { _hateAttrBox, true });
+            _h1Out = r == null ? "null" : r.GetType().Name;
+            return r;
+        }
+        catch (Exception ex)
+        {
+            _h1Out = "threw:" + Unwrap(ex).GetType().Name;
+            return null;
+        }
+    }
+
+    // ── Technique 2 — native get_Value invoke on the wrapper pointer, then re-wrap the result ──
+    private object? TryNativeGetValueHate(object iattr)
+    {
+        try
+        {
+            IntPtr ptr = NativePtr(iattr);
+            if (ptr == IntPtr.Zero) { _h2Out = "noptr"; return null; }
+
+            IntPtr method = IntPtr.Zero;
+            for (IntPtr k = IL2CPP.il2cpp_object_get_class(ptr); k != IntPtr.Zero; k = IL2CPP.il2cpp_class_get_parent(k))
+            {
+                method = IL2CPP.il2cpp_class_get_method_from_name(k, "get_Value", 0);
+                if (method != IntPtr.Zero) break;
+            }
+            if (method == IntPtr.Zero) { _h2Out = "nomethod"; return null; }
+
+            IntPtr exc = IntPtr.Zero, res;
+            unsafe { res = IL2CPP.il2cpp_runtime_invoke(method, ptr, (void**)null, ref exc); }
+            if (exc != IntPtr.Zero) { _h2Out = "excthrown"; return null; }
+
+            object? list = WrapRepeatedHate(res);
+            _h2Out = list != null ? list.GetType().Name : (res == IntPtr.Zero ? "null" : "wrapnull");
+            return list;
+        }
+        catch (Exception ex) { _h2Out = "threw:" + Unwrap(ex).GetType().Name; return null; }
+    }
+
+    // ── Technique 3 — native read of the value_ backing field off the wrapper pointer, then re-wrap ──
+    private object? TryNativeValueFieldHate(object iattr)
+    {
+        try
+        {
+            IntPtr ptr = NativePtr(iattr);
+            if (ptr == IntPtr.Zero) { _h3Out = "noptr"; return null; }
+
+            IntPtr field = IntPtr.Zero;
+            for (IntPtr k = IL2CPP.il2cpp_object_get_class(ptr); k != IntPtr.Zero; k = IL2CPP.il2cpp_class_get_parent(k))
+            {
+                field = IL2CPP.il2cpp_class_get_field_from_name(k, "value_");
+                if (field != IntPtr.Zero) break;
+            }
+            if (field == IntPtr.Zero) { _h3Out = "nofield"; return null; }
+
+            IntPtr obj = IL2CPP.il2cpp_field_get_value_object(field, ptr);
+            object? list = WrapRepeatedHate(obj);
+            _h3Out = list != null ? list.GetType().Name : (obj == IntPtr.Zero ? "null" : "wrapnull");
+            return list;
+        }
+        catch (Exception ex) { _h3Out = "threw:" + Unwrap(ex).GetType().Name; return null; }
+    }
+
+    // Wrap a native RepeatedField<HateInfo> object pointer as the closed interop type so its managed Count +
+    // indexer become usable. Il2CppInterop reference-type proxies all expose a public (IntPtr) constructor.
+    private object? WrapRepeatedHate(IntPtr ptr)
+    {
+        if (ptr == IntPtr.Zero || _closedRepeatedHateType == null) return null;
+        try { return Activator.CreateInstance(_closedRepeatedHateType, ptr); }
+        catch { return null; }
+    }
+}

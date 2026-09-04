@@ -52,6 +52,8 @@ public sealed partial class Plugin : IStellarPlugin
         _targetBuff.OnlyMine = _targetHudOnlyMine;
         _breakDiag           = _cfg.Get<bool>("break_diag", false);
         _targetInfo.BreakDiag = _breakDiag;
+        _threatDiag           = _cfg.Get<bool>("threat_diag", false);
+        _targetInfo.ThreatDiag = _threatDiag;
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
         _targetBuff.ShowHidden = _showHidden;
         RegisterSettings();

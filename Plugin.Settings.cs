@@ -71,6 +71,30 @@ public sealed partial class Plugin
                     new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
                     new TextElement(() => "Show hidden effects"),
                 }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showThreat, Set: v =>
+                    {
+                        // Persist + flip the HUD gate live. The block shows/hides immediately, but the window's
+                        // reserved height only re-fits on the next load (height is locked at registration — see
+                        // BuildTargetHudThreatBlock notes), so a mid-session enable may lack reserved space until reload.
+                        _showThreat = v;
+                        _cfg.Set<bool>("show_threat", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Show threat / aggro list"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _threatDiag, Set: v =>
+                    {
+                        _threatDiag = v;
+                        _targetInfo.ThreatDiag = v;
+                        _cfg.Set<bool>("threat_diag", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Threat diagnostic (log to BepInEx)"),
+                }, Gap: 6f),
                 new SeparatorElement(),
                 new RowElement(new HudElement[]
                 {
