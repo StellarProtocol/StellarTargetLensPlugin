@@ -61,7 +61,20 @@ public sealed partial class Plugin
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
         // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged. The threat/aggro list is
         // its OWN window now (see Plugin.ThreatWindow.cs), so this HUD keeps its original fixed height.
-        const float HudH = 240f;
+        //
+        // The height is engine-locked for a Resizable window (MinHeight==MaxHeight can't change at runtime — see
+        // WindowBuilder-Patterns.md), so it's chosen ONCE here from the PERSISTED buff style. Read straight from
+        // _cfg (not _buffStyle) so it doesn't depend on which partial's ctor sets that field first.
+        //   Classic (0): full 240 — header + HP + break bars + the effect-tile grid.
+        //   List    (1): compact — the tile grid collapses (gated on _buffStyle==0 in BuildTargetHudRoot; the
+        //                standalone Target Effects window renders the effects instead), so drop that band. The
+        //                break/stagger gauge MUST still fit (bosses show it in List mode too).
+        // Compact derivation from BuildTargetHudRoot (ColumnElement Gap 4, Padding 8): 8 pad-top + 52 header
+        // (52px portrait) + 4 + 28 HP bar + 4 + 18 break bar + 8 pad-bottom = 122 core; +18 margin to absorb
+        // any gaps the collapsed conditional slots still reserve and font metrics → 140.
+        // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
+        int style = _cfg.Get<int>("buff_style", 0);
+        float HudH = style == 1 ? 140f : 240f;
         // Default position tuned in-game (saved 2560x1440 rect x=1938,y=26 → 202px from the right edge, 26px down).
         // Expressed as edge offsets so it holds across resolutions. A user's own saved drag still overrides this.
         float x = _services.Framework.ScreenWidth - HudW - 202f;
