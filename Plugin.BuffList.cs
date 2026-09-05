@@ -1,0 +1,119 @@
+using System.Collections.Generic;
+using Stellar.Abstractions.Domain;
+using Stellar.Abstractions.Services;
+
+namespace Stellar.TargetLens;
+
+// Data layer for the "List" buff/debuff STYLE — the standalone Target Effects window (Plugin.BuffListWindow.cs).
+// Owns the buff-display-style config field, its OWN icon-UV pool (separate from the Target HUD tile pool so the two
+// styles can be mounted at once without stomping each other's atlas rects), and the per-row getters the window's
+// rows bind to. Reuses the Target HUD's effect resolution (CurEffects / ResolveEffectName) so the OnlyMine /
+// ShowHidden filters and the layout-edit example data apply to the list automatically — the shared icon-priority
+// logic is extracted here as ResolveEffectIcon and called by BOTH the classic tiles and this list.
+public sealed partial class Plugin
+{
+    // Buff/debuff display style: 0 = Classic (tiles inside the Target HUD, the default), 1 = List (this window).
+    // Loaded in RegisterBuffListWindow (mirrors how _showThreat is loaded in RegisterThreatWindow).
+    private int _buffStyle;
+
+    // Dropdown option order MUST match the style ints above (index 0 = Classic, 1 = List).
+    private static readonly IReadOnlyList<string> BuffStyleOptions = new[]
+    {
+        "Classic (in Target HUD)",
+        "List (separate window)",
+    };
+
+    private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)
+    private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
+    private const float BuffRowStride = 21f;                               // bar (18) + column gap (3); one row's vertical footprint
+    private const int   BuffListNameBudget = 22;                          // name chars before it's ellipsised (leaves room for the time)
+
+    // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
+    // (GetBuffListIcon). Order: manual override → Imagine icon on the source skill → skill icon → the buff's OWN
+    // icon. LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
+    // GetImagineForSkill); fall through on null so an effect whose skill icon doesn't load still shows its buff icon.
+    private object? ResolveEffectIcon(TargetBuffRow r, out UvRect uv)
+    {
+        uv = default;
+        if (EffectOverrides.TryGetValue(r.BaseId, out var ov))
+            return _services.GameAssets.LoadImagineIcon(ov.IconSkill, out uv);
+        if (r.SkillId > 0)
+        {
+            var img = _services.GameAssets.LoadImagineIcon(r.SkillId, out uv);
+            if (img != null) return img;
+            var sk = _services.GameAssets.LoadSkillIcon(r.SkillId, out uv);
+            if (sk != null) return sk;
+        }
+        return _services.GameAssets.LoadBuffIcon(r.BaseId, out uv);
+    }
+
+    // ── Height-driven row count ──────────────────────────────────────────────────
+    // More window height ⇒ more visible rows (the window is height-resizable). Mirrors the threat window's
+    // height-based sizing: subtract the title line + column padding, then floor by the per-row stride.
+    private int BuffListVisibleRows()
+    {
+        float h = _buffListWindow != null ? _buffListWindow.Rect.Height : 0f;
+        if (h < 1f) h = 208f;                       // pre-mount fallback ≈ the default (8-row) height
+        const float titleReserve = 24f;             // title TextElement (~14px) + its column gap
+        const float padding      = 16f;             // ColumnElement padding (8 top + 8 bottom)
+        int rows = (int)((h - titleReserve - padding) / BuffRowStride);
+        return System.Math.Clamp(rows, 1, BuffListSlots);
+    }
+
+    // A row renders only when it has a live effect AND fits at the current window height.
+    private bool BuffListRowVisible(int idx) => idx < BuffListVisibleRows() && idx < CurEffects().Count;
+
+    // ── Per-row getters (all guarded; never throw) ───────────────────────────────
+
+    private object? GetBuffListIcon(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) { _buffListUv[idx] = default; return null; }
+        return ResolveEffectIcon(list[idx], out _buffListUv[idx]);
+    }
+
+    // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned time.
+    private string BuffListName(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) return "";
+        return Truncate(StripTags(ResolveEffectName(list[idx])), BuffListNameBudget);
+    }
+
+    // Compact remaining time inside the bar (right): hours / minutes / seconds; permanent (RemainSec < 0) → blank.
+    private string BuffListTime(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) return "";
+        float rem = list[idx].RemainSec;
+        if (rem < 0f) return "";                                   // permanent
+        if (rem >= 3600f) return $"{(int)(rem / 3600f)}h";
+        if (rem >= 60f)   return $"{(int)(rem / 60f)}m";
+        return $"{(int)rem}s";
+    }
+
+    // Bar fill = remaining-time fraction (same as the tiles' HudEffectFraction). Permanent = full.
+    private float BuffListFraction(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) return 0f;
+        var r = list[idx];
+        return r.Duration > 0 ? Clamp01(r.RemainSec / (r.Duration / 1000f)) : 1f;
+    }
+
+    // Bar colour by type: debuff (BuffType == 0) → red/orange, everything else → green. Drives the per-row
+    // Then/Else bar split in the window root (BarElement's colour arg is a VALUE, not a Func).
+    private bool BuffListIsDebuff(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) return false;
+        return list[idx].BuffType == 0;
+    }
+
+    // Length-cap with a trailing ellipsis (no ellipsis facility on TextElement, so trim the string itself).
+    private static string Truncate(string s, int max)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
+        return s.Substring(0, max - 1).TrimEnd() + "…";
+    }
+}

@@ -149,8 +149,10 @@ public sealed partial class Plugin
                 }),
 
             // One combined buff + debuff grid of CooldownBar-style tiles (skill icon when the effect has a
-            // parent skill, else the buff icon); debuff = red/orange accent, buff = green.
-            BuildTargetHudEffectTiles(),
+            // parent skill, else the buff icon); debuff = red/orange accent, buff = green. Shown ONLY in
+            // Classic style (buff_style == 0); in List style the standalone Target Effects window renders
+            // these instead (see Plugin.BuffListWindow.cs), so the classic grid collapses away here.
+            new ConditionalElement(() => _buffStyle == 0, BuildTargetHudEffectTiles()),
         }, Gap: 4f) { Padding = 8 };
 
     private const float TileStride = 48f;              // ≈ CooldownBar CdTileIcon (44) + 4px gap
@@ -335,26 +337,13 @@ public sealed partial class Plugin
         return idx < CurEffects().Count && idx < EffTilesPerLine();
     }
 
+    // Tile-path icon: resolve into this slot's UV cell. Shared priority logic lives in ResolveEffectIcon
+    // (Plugin.BuffList.cs) so the List window's rows resolve icons identically.
     private object? GetHudEffectIcon(int idx)
     {
         var list = CurEffects();
         if (idx >= list.Count) { _hudEffUv[idx] = default; return null; }
-        var r = list[idx];
-        // Manual override wins (specific buffs the game data can't resolve).
-        if (EffectOverrides.TryGetValue(r.BaseId, out var ov))
-            return _services.GameAssets.LoadImagineIcon(ov.IconSkill, out _hudEffUv[idx]);
-        // Icon priority when the effect has a source skill: Imagine icon → skill icon → the buff's OWN icon.
-        // LoadImagineIcon is tried DIRECTLY on the source skill (not gated on GetImagineForSkill, which misses
-        // leveled imagine cast ids — e.g. "Arcane! Divine Assurance" = 2900840). Fall through on null so an effect
-        // whose skill icon doesn't load still shows its buff icon (e.g. the "Enchantment" debuff).
-        if (r.SkillId > 0)
-        {
-            var img = _services.GameAssets.LoadImagineIcon(r.SkillId, out _hudEffUv[idx]);
-            if (img != null) return img;
-            var sk = _services.GameAssets.LoadSkillIcon(r.SkillId, out _hudEffUv[idx]);
-            if (sk != null) return sk;
-        }
-        return _services.GameAssets.LoadBuffIcon(r.BaseId, out _hudEffUv[idx]);
+        return ResolveEffectIcon(list[idx], out _hudEffUv[idx]);
     }
 
     // ★-badge predicate: true when the effect was cast by the LOCAL PLAYER (self-cast). The star now marks

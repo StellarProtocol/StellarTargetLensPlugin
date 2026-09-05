@@ -95,6 +95,15 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => "Threat diagnostic (log to BepInEx)"),
                 }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => "Buff / debuff display"),
+                    new DropdownElement(
+                        Selected: () => _buffStyle,
+                        Options:  () => BuffStyleOptions,
+                        OnSelect: SetBuffStyle,
+                        Width:    200f),
+                }, Gap: 6f),
                 new SeparatorElement(),
                 new RowElement(new HudElement[]
                 {
@@ -113,6 +122,17 @@ public sealed partial class Plugin
         { Group = LauncherGroup.Plugin,
           // Gameplay tool: only surface its launcher tile while in-world.
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World });
+    }
+
+    // Buff/debuff display style selector (0 = Classic tiles in the Target HUD, 1 = List window). Persists and takes
+    // effect LIVE: flip the List window's visibility straight away; the Target HUD's classic tile grid reacts on its
+    // own via a ConditionalElement on _buffStyle (see Plugin.TargetHud.cs), so switching updates both sides at once.
+    private void SetBuffStyle(int style)
+    {
+        _buffStyle = style;
+        _cfg.Set<int>("buff_style", style);
+        _cfg.Save();
+        _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic → hide it
     }
 
     // Master "Show hidden effects" toggle. Persists, flips the tracker's list source (full vs display-filtered),
