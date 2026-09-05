@@ -59,8 +59,9 @@ internal sealed partial class TargetInfoTracker
 
     // ── [ThreatDiag] opt-in flag + change-gate (mirrors BreakDiag) ──────────────
     public  bool   ThreatDiag;
-    private long   _threatDiagUuid = long.MinValue;
-    private string _threatDiagSig  = "";
+    private long   _threatDiagUuid  = long.MinValue;
+    private string _threatDiagSig   = "";
+    private long   _threatLocalUuid;  // local player uuid the last build matched against — surfaced in the diag header
 
     /// <summary>
     /// The target's (<see cref="LastTargetEntity"/>) threat table, sorted DESC by <see cref="ThreatEntry.HateVal"/>
@@ -89,6 +90,7 @@ internal sealed partial class TargetInfoTracker
 
                     long localUuid = 0;
                     try { localUuid = _services.CombatSnapshot.LocalEntityId.Value; } catch { localUuid = 0; }
+                    _threatLocalUuid = localUuid; // remembered for the [ThreatDiag] header
 
                     // First pass — gather (uuid, hate) and the total, so each row's Pct can be computed.
                     var raw = new List<(long uuid, long hate)>(count);
@@ -108,13 +110,32 @@ internal sealed partial class TargetInfoTracker
                     foreach (var (u, h) in raw)
                     {
                         float pct    = sum > 0 ? (float)h / sum : 0f;
-                        bool  local  = localUuid != 0 && u == localUuid;
                         string name  = ResolveThreatName(u, localUuid, out string src);
-                        _threatList.Add(new ThreatEntry(u, name, h, pct, local, src));
+                        // isLocal is decided ONCE, after the sort, by a single-winner pass — never inline here, or a
+                        // client/server uuid variance can flag two rows gold. Build every row non-local.
+                        _threatList.Add(new ThreatEntry(u, name, h, pct, false, src));
                     }
 
                     // Highest aggro first — the display Top-N and the local-append both rely on this order.
                     _threatList.Sort((a, b) => b.HateVal.CompareTo(a.HateVal));
+
+                    // Single-winner local flag: there is exactly ONE local player, so at most one row may be gold.
+                    // Prefer a strict full-uuid match; fall back to a roleId (uuid>>16) match to cover a client-vs-
+                    // server uuid variance. Flag only the first hit — everyone else stays non-local.
+                    if (localUuid != 0)
+                    {
+                        int li = -1;
+                        for (int i = 0; i < _threatList.Count; i++)
+                            if (_threatList[i].Uuid == localUuid) { li = i; break; }
+                        if (li < 0)
+                            for (int i = 0; i < _threatList.Count; i++)
+                                if ((_threatList[i].Uuid >> 16) == (localUuid >> 16)) { li = i; break; }
+                        if (li >= 0)
+                        {
+                            var e = _threatList[li];
+                            _threatList[li] = new ThreatEntry(e.Uuid, e.Name, e.HateVal, e.Pct, true, e.NameSrc);
+                        }
+                    }
                 }
             }
         }
@@ -243,19 +264,23 @@ internal sealed partial class TargetInfoTracker
         {
             var sb = new System.Text.StringBuilder();
             foreach (var e in _threatList)
+            {
                 sb.Append(" [").Append(e.Uuid).Append(' ').Append(e.Name).Append("<-").Append(e.NameSrc)
-                  .Append(' ').Append(e.HateVal).Append(' ').Append((int)(e.Pct * 100f)).Append("%]");
+                  .Append(' ').Append(e.HateVal).Append(' ').Append((int)(e.Pct * 100f)).Append('%');
+                if (e.IsLocal) sb.Append(" L"); // the single local-flagged row — confirms exactly one is gold
+                sb.Append(']');
+            }
             string entries = sb.ToString();
 
             // Change-gate on target uuid + the full technique/count/entries signature so a moving value logs but a
-            // steady one doesn't spam.
+            // steady one doesn't spam. (entries embeds the ` L` marker, so a local-flag flip re-logs on its own.)
             string sig = $"{tech}|{_h1Out}|{_h2Out}|{_h3Out}|{count}|{entries}";
             if (LastTargetUuid == _threatDiagUuid && sig == _threatDiagSig) return;
             _threatDiagUuid = LastTargetUuid;
             _threatDiagSig  = sig;
             _services.Log.Info(
-                $"[ThreatDiag] uuid={LastTargetUuid} tech={tech} T1={_h1Out} T2={_h2Out} T3={_h3Out} " +
-                $"listCount={count} entries={entries}");
+                $"[ThreatDiag] uuid={LastTargetUuid} local={_threatLocalUuid} tech={tech} " +
+                $"T1={_h1Out} T2={_h2Out} T3={_h3Out} listCount={count} entries={entries}");
         }
         catch { /* diagnostic must never throw */ }
     }
