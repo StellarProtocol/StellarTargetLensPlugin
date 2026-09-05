@@ -44,6 +44,7 @@ public sealed partial class Plugin : IStellarPlugin
 
         RegisterTargetHud();          // top-right auto-showing combat-target overlay (reuses the two trackers above)
         RegisterTargetHudTooltip();   // click-to-info tooltip for the HUD's buff/debuff tiles
+        RegisterThreatWindow();       // standalone auto-showing threat/aggro window (its own gated HUD overlay)
         _services.Framework.Update += OnTargetHudUpdate;
 
         // Load the caster filter and push it into the tracker, then register the settings window + launcher tile

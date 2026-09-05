@@ -33,9 +33,10 @@ internal sealed partial class TargetInfoTracker
         public readonly long   HateVal; // raw aggro magnitude (uint on the wire, widened to long for the sum)
         public readonly float  Pct;     // HateVal / Σ HateVal, 0..1
         public readonly bool   IsLocal; // Uuid == local player entity id
-        public ThreatEntry(long uuid, string name, long hateVal, float pct, bool isLocal)
+        public readonly string NameSrc; // diag only — which resolution step produced Name (attrName/party/…)
+        public ThreatEntry(long uuid, string name, long hateVal, float pct, bool isLocal, string nameSrc = "")
         {
-            Uuid = uuid; Name = name; HateVal = hateVal; Pct = pct; IsLocal = isLocal;
+            Uuid = uuid; Name = name; HateVal = hateVal; Pct = pct; IsLocal = isLocal; NameSrc = nameSrc;
         }
     }
 
@@ -108,7 +109,8 @@ internal sealed partial class TargetInfoTracker
                     {
                         float pct    = sum > 0 ? (float)h / sum : 0f;
                         bool  local  = localUuid != 0 && u == localUuid;
-                        _threatList.Add(new ThreatEntry(u, ResolveThreatName(u), h, pct, local));
+                        string name  = ResolveThreatName(u, localUuid, out string src);
+                        _threatList.Add(new ThreatEntry(u, name, h, pct, local, src));
                     }
 
                     // Highest aggro first — the display Top-N and the local-append both rely on this order.
@@ -122,12 +124,66 @@ internal sealed partial class TargetInfoTracker
         entries = _threatList; return _threatList.Count > 0;
     }
 
-    // Player name via CombatLookup (same as ResolveName); never blank — fall back to "Player <entId>" so a row
-    // always has a label even before the name service has the entity.
-    private string ResolveThreatName(long uuid)
+    // Player-name resolution ladder (Change 1). First non-empty wins; `src` records which step produced the name
+    // for the [ThreatDiag] readout. HateInfo.Uuid is the FULL 64-bit uuid for entity/attr lookups; uuid>>16 is the
+    // CharId/roleId (PartyRoster key + last-resort label). Never throws — worst case returns "Player <roleId>".
+    private string ResolveThreatName(long uuid, long localUuid, out string src)
     {
-        string n = ResolveName(uuid);
-        return string.IsNullOrEmpty(n) ? "Player " + (uuid >> 16) : n;
+        // 1. Primary — AttrName off the live entity (exactly what the game's damage-list UI reads).
+        var ent = GetEntityObj(uuid);
+        if (ent != null)
+        {
+            string an = ReadAttrString(ent, _attrNameBox);          // technique (a): GetAttr<object>(1).ToString()
+            if (string.IsNullOrEmpty(an)) an = ReadAttrNameNative(ent); // technique (b): native get_Value on GetLuaAttr(1)
+            if (!string.IsNullOrEmpty(an)) { src = "attrName"; return an; }
+        }
+
+        // 2. Fallback A — PartyRoster (party/raid members even when outside AOI), keyed by CharId = uuid>>16.
+        string pr = ResolvePartyName(uuid >> 16);
+        if (!string.IsNullOrEmpty(pr)) { src = "party"; return pr; }
+
+        // 3. Fallback B — CombatLookup (AOI-scoped; may be empty for hate-list players not in it).
+        string cl = ResolveName(uuid);
+        if (!string.IsNullOrEmpty(cl)) { src = "combatLookup"; return cl; }
+
+        // 4. Fallback C — self (the local player's own row).
+        if (localUuid != 0 && (uuid >> 16) == (localUuid >> 16))
+        {
+            string self = ResolveSelfName();
+            if (!string.IsNullOrEmpty(self)) { src = "self"; return self; }
+        }
+
+        // 5. Last resort — the roleId, so a row always carries a label.
+        src = "roleId";
+        return "Player " + (uuid >> 16);
+    }
+
+    // PartyRoster.Members match by CharId (uuid>>16) → member display name. Guarded: the service may be absent on
+    // an older framework, or a slot may be sparsely synced with an empty name.
+    private string ResolvePartyName(long charId)
+    {
+        try
+        {
+            var roster = _services.PartyRoster;
+            var members = roster?.Members;
+            if (members == null) return "";
+            foreach (var m in members)
+                if (m.CharId == charId && !string.IsNullOrEmpty(m.Name)) return m.Name;
+        }
+        catch { /* service missing / not populated — fall through */ }
+        return "";
+    }
+
+    // Local player's own display name via PlayerState (blank in social areas). Guarded.
+    private string ResolveSelfName()
+    {
+        try
+        {
+            var ps = _services.PlayerState;
+            if (ps != null && !string.IsNullOrEmpty(ps.Name)) return ps.Name;
+        }
+        catch { /* service missing — fall through */ }
+        return "";
     }
 
     // HateInfo.Uuid / .HateVal off the runtime element type, cached. Struct members surface as a property or a
@@ -187,8 +243,8 @@ internal sealed partial class TargetInfoTracker
         {
             var sb = new System.Text.StringBuilder();
             foreach (var e in _threatList)
-                sb.Append(" [").Append(e.Uuid).Append(' ').Append(e.Name).Append(' ')
-                  .Append(e.HateVal).Append(' ').Append((int)(e.Pct * 100f)).Append("%]");
+                sb.Append(" [").Append(e.Uuid).Append(' ').Append(e.Name).Append("<-").Append(e.NameSrc)
+                  .Append(' ').Append(e.HateVal).Append(' ').Append((int)(e.Pct * 100f)).Append("%]");
             string entries = sb.ToString();
 
             // Change-gate on target uuid + the full technique/count/entries signature so a moving value logs but a

@@ -75,10 +75,10 @@ public sealed partial class Plugin
                 {
                     new ToggleElement(Label: () => "", Get: () => _showThreat, Set: v =>
                     {
-                        // Persist + flip the HUD gate live. The block shows/hides immediately, but the window's
-                        // reserved height only re-fits on the next load (height is locked at registration — see
-                        // BuildTargetHudThreatBlock notes), so a mid-session enable may lack reserved space until reload.
+                        // The threat/aggro list is its own window now, so the toggle takes full effect live: flip
+                        // the window's visibility straight away (no reserved-height reload caveat).
                         _showThreat = v;
+                        _threatWindow.SetVisible(v);
                         _cfg.Set<bool>("show_threat", v);
                         _cfg.Save();
                     }),

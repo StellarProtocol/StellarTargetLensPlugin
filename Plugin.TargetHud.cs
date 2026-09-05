@@ -59,14 +59,9 @@ public sealed partial class Plugin
 
         const float HudW = 420f;
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
-        // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged.
-        //
-        // Load the persisted threat toggle BEFORE sizing: SetRect can't grow a height-locked window at runtime
-        // (WindowRenderer clamps SetRect's height to the spec's Min/Max, which are equal), so the threat block's
-        // extra rows must be RESERVED into the height here, from config, at registration time. A runtime toggle
-        // persists the flag and re-fits fully on the next load.
-        _showThreat = _cfg.Get<bool>("show_threat", false);
-        float HudH = 240f + (_showThreat ? ThreatReserveH : 0f);
+        // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged. The threat/aggro list is
+        // its OWN window now (see Plugin.ThreatWindow.cs), so this HUD keeps its original fixed height.
+        const float HudH = 240f;
         // Default position tuned in-game (saved 2560x1440 rect x=1938,y=26 → 202px from the right edge, 26px down).
         // Expressed as edge offsets so it holds across resolutions. A user's own saved drag still overrides this.
         float x = _services.Framework.ScreenWidth - HudW - 202f;
@@ -156,10 +151,6 @@ public sealed partial class Plugin
             // One combined buff + debuff grid of CooldownBar-style tiles (skill icon when the effect has a
             // parent skill, else the buff icon); debuff = red/orange accent, buff = green.
             BuildTargetHudEffectTiles(),
-
-            // Per-player threat/aggro Top-N (opt-in; collapses to zero height when off or no data). Height is
-            // reserved into the locked window at registration time (see BuildTargetHudThreatBlock notes).
-            BuildTargetHudThreatBlock(),
         }, Gap: 4f) { Padding = 8 };
 
     private const float TileStride = 48f;              // ≈ CooldownBar CdTileIcon (44) + 4px gap
