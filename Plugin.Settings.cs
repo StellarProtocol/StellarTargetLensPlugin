@@ -53,7 +53,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("target_hud_only_mine", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Only show effects I applied"),
+                    new TextElement(() => "Only my effects (+ the target's own)"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {

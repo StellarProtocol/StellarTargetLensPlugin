@@ -265,11 +265,20 @@ internal sealed class TargetBuffTracker
         // "Only show effects I applied": filter to rows cast by the local player. Guarded so an unresolved self
         // (localUuid == 0) never hides everything — filtering is skipped entirely in that case.
         long localUuid = OnlyMine ? _services.CombatSnapshot.LocalEntityId.Value : 0L;
+        long targetUuid = OnlyMine ? _info.LastTargetUuid : 0L;   // keep the target's OWN self-applied effects too
         bool filterMine = OnlyMine && localUuid != 0L;
         foreach (var row in _persist.Values)
         {
             if (row.Duration > 0 && row.RemainSec < 0.05f) continue;  // render-time expiry guard
-            if (filterMine && row.FireUuid != localUuid) continue;    // not cast by me → exclude
+            // Keep rows cast by me OR by the target itself; exclude only when it's neither. The
+            // (FireUuid >> 16) == (targetUuid >> 16) roleId/entId fallback rides alongside the strict match
+            // because a self-source uuid can differ from the entity uuid in the low (client/summon/entType)
+            // bits — same encoding nuance as the threat local-player match. Fully guarded: targetUuid == 0
+            // makes the extra clause inert, so behavior is exactly the old "mine only".
+            if (filterMine
+                && row.FireUuid != localUuid
+                && !(targetUuid != 0 && (row.FireUuid == targetUuid || (row.FireUuid >> 16) == (targetUuid >> 16))))
+                continue;   // not cast by me and not the target's own → exclude
             if (Selection != null && !Selection.ShouldShow(row.BaseId, row.BuffType == 0)) continue;  // user hid this effect
             if (row.BuffType == 0) _debuffs.Add(row);
             else                   _buffs.Add(row);                    // type 1/2 and unknown → Buffs
