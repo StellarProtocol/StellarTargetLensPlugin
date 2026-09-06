@@ -122,30 +122,6 @@ public sealed partial class Plugin
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
-                    new ToggleElement(Label: () => "", Get: () => _castBarOn, Set: v =>
-                    {
-                        // The boss cast bar is its own window, so the toggle takes full effect live: flip the
-                        // window's visibility straight away (no reserved-height reload caveat).
-                        _castBarOn = v;
-                        _castBarWindow.SetVisible(v);
-                        _cfg.Set<bool>("cast_bar_on", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Show boss cast bar"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _castDiag, Set: v =>
-                    {
-                        _castDiag = v;
-                        _targetInfo.CastDiag = v;
-                        _cfg.Set<bool>("cast_diag", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Cast-bar diagnostic (log to BepInEx)"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
                     new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
                     {
                         // The boss skill-timer list is its own window, so the toggle takes full effect live: flip the

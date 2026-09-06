@@ -48,7 +48,6 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterTargetHudTooltip();   // click-to-info tooltip for the HUD's buff/debuff tiles
         RegisterThreatWindow();       // standalone auto-showing threat/aggro window (its own gated HUD overlay)
         RegisterBuffListWindow();     // standalone "List" buff/debuff style window (alternative to the classic tiles)
-        RegisterCastBarWindow();      // standalone boss cast-bar overlay (auto-shows only while the boss is casting)
         RegisterBossTimerWindow();    // standalone boss skill-timer list (our replica of the game's native DBM list)
         _services.Framework.Update += OnTargetHudUpdate;
 
@@ -65,8 +64,6 @@ public sealed partial class Plugin : IStellarPlugin
         _targetInfo.BreakDiag = _breakDiag;
         _threatDiag           = _cfg.Get<bool>("threat_diag", false);
         _targetInfo.ThreatDiag = _threatDiag;
-        _castDiag             = _cfg.Get<bool>("cast_diag", false);
-        _targetInfo.CastDiag  = _castDiag;
         _dbmDiag              = _cfg.Get<bool>("dbm_diag", false);
         _bossDbm.DbmDiag      = _dbmDiag;
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in

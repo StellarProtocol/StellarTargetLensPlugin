@@ -7,12 +7,11 @@ namespace Stellar.TargetLens;
 // list. A borderless auto-showing HUD window that renders the active encounter's upcoming boss skills, each as a
 // row: [optional skill icon] [countdown bar: <name> ........ MM:SS]. The bar FILL is the remaining-time fraction,
 // the name sits inside-left (ellipsised) and MM:SS inside-right (SecondaryLabel) — the same row style as the buff
-// list (Plugin.BuffListWindow.cs). Mirrors the threat / cast-bar windows: gated by ShouldRender, with layout-edit
+// list (Plugin.BuffListWindow.cs). Mirrors the threat window: gated by ShouldRender, with layout-edit
 // example rows so it can be placed without a live boss.
 //
-// SEPARATE from the boss cast-bar overlay (Plugin.CastBarWindow.cs / TargetInfoTracker.Cast.cs) — that shows the
-// single skill currently CHANTING; this shows the whole upcoming-skill schedule. This list is a single GLOBAL
-// encounter list (NOT keyed per target), so it gates on the list being non-empty, not on having a target.
+// This shows the whole upcoming-skill schedule for the encounter. The list is a single GLOBAL encounter list
+// (NOT keyed per target), so it gates on the list being non-empty, not on having a target.
 //
 // Data: BossDbmTracker.Current (read from Panda.ZUi.DBMMgr.DbmInfoDict). Row getters + the OWN icon-UV pool live
 // in Plugin.BossTimer.cs.
