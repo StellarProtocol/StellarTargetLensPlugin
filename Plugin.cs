@@ -21,6 +21,7 @@ public sealed partial class Plugin : IStellarPlugin
 
     private TargetInfoTracker _targetInfo = null!;   // constructed in the ctor, before the HUD is registered
     private TargetBuffTracker _targetBuff = null!;   // constructed in the ctor, right after _targetInfo
+    private BossDbmTracker    _bossDbm    = null!;   // reads the game's DBM boss-skill countdown list (target-independent)
 
     // Theme muted-text colour helper (used by the moved Target HUD partials; copied from the old Plugin.FightRes.cs).
     private Func<ColorRgba?> MutedColor => () => (ColorRgba?)_services.Theme.Colors.TextMuted;
@@ -35,6 +36,7 @@ public sealed partial class Plugin : IStellarPlugin
 
         _targetInfo = new TargetInfoTracker(_services);
         _targetBuff = new TargetBuffTracker(_services, _targetInfo);
+        _bossDbm    = new BossDbmTracker(_services);   // global DBM boss-skill list (not tied to the current target)
 
         // User effect-selection (which buffs/debuffs appear on the HUD), persisted in its own config section and
         // pushed into the tracker so RebuildLists honours it. Registered as a picker window below.
@@ -47,6 +49,7 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterThreatWindow();       // standalone auto-showing threat/aggro window (its own gated HUD overlay)
         RegisterBuffListWindow();     // standalone "List" buff/debuff style window (alternative to the classic tiles)
         RegisterCastBarWindow();      // standalone boss cast-bar overlay (auto-shows only while the boss is casting)
+        RegisterBossTimerWindow();    // standalone boss skill-timer list (our replica of the game's native DBM list)
         _services.Framework.Update += OnTargetHudUpdate;
 
         // Load the three per-source caster filters and push them into the tracker, then register the settings window
@@ -64,6 +67,8 @@ public sealed partial class Plugin : IStellarPlugin
         _targetInfo.ThreatDiag = _threatDiag;
         _castDiag             = _cfg.Get<bool>("cast_diag", false);
         _targetInfo.CastDiag  = _castDiag;
+        _dbmDiag              = _cfg.Get<bool>("dbm_diag", false);
+        _bossDbm.DbmDiag      = _dbmDiag;
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
         _targetBuff.ShowHidden = _showHidden;
         RegisterSettings();

@@ -17,6 +17,7 @@ public sealed partial class Plugin
     private bool           _showMonster = true;       // config-backed: include the target's own + unknown-source effects
     private bool           _breakDiag;                // config-backed: TEMPORARY break-gauge diagnostic logging
     private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
+    private bool           _dbmDiag;                  // config-backed: TEMPORARY boss skill-timer (DBM) diagnostic logging
 
     private void RegisterSettings()
     {
@@ -142,6 +143,30 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => "Cast-bar diagnostic (log to BepInEx)"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
+                    {
+                        // The boss skill-timer list is its own window, so the toggle takes full effect live: flip the
+                        // window's visibility straight away (no reserved-height reload caveat).
+                        _bossTimerOn = v;
+                        _bossTimerWindow.SetVisible(v);
+                        _cfg.Set<bool>("boss_timer_on", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Show boss skill timers"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _dbmDiag, Set: v =>
+                    {
+                        _dbmDiag = v;
+                        _bossDbm.DbmDiag = v;
+                        _cfg.Set<bool>("dbm_diag", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Boss-timer diagnostic (log to BepInEx)"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
