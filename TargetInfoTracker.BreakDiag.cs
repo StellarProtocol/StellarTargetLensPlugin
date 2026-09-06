@@ -11,7 +11,7 @@ namespace Stellar.TargetLens;
 /// </summary>
 internal sealed partial class TargetInfoTracker
 {
-    // Master opt-in switch (mirrors TargetBuffTracker.OnlyMine): loaded from config, toggled from settings.
+    // Master opt-in switch (mirrors TargetBuffTracker's source filters): loaded from config, toggled from settings.
     public bool BreakDiag;
 
     // Extra break-state attribute ids (EAttrType) sampled alongside AttrStunned(443)/AttrMaxStunned(442).

@@ -7,8 +7,8 @@ namespace Stellar.TargetLens;
 // Data layer for the "List" buff/debuff STYLE — the standalone Target Effects window (Plugin.BuffListWindow.cs).
 // Owns the buff-display-style config field, its OWN icon-UV pool (separate from the Target HUD tile pool so the two
 // styles can be mounted at once without stomping each other's atlas rects), and the per-row getters the window's
-// rows bind to. Reuses the Target HUD's effect resolution (CurEffects / ResolveEffectName) so the OnlyMine /
-// ShowHidden filters and the layout-edit example data apply to the list automatically — the shared icon-priority
+// rows bind to. Reuses the Target HUD's effect resolution (CurEffects / ResolveEffectName) so the per-source
+// (mine/others/monster) and ShowHidden filters and the layout-edit example data apply to the list automatically — the shared icon-priority
 // logic is extracted here as ResolveEffectIcon and called by BOTH the classic tiles and this list.
 public sealed partial class Plugin
 {

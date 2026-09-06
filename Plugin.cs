@@ -49,10 +49,15 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterCastBarWindow();      // standalone boss cast-bar overlay (auto-shows only while the boss is casting)
         _services.Framework.Update += OnTargetHudUpdate;
 
-        // Load the caster filter and push it into the tracker, then register the settings window + launcher tile
-        // (needs _targetBuff / _targetHudWindow, which the calls above have now built).
-        _targetHudOnlyMine   = _cfg.Get<bool>("target_hud_only_mine", false);
-        _targetBuff.OnlyMine = _targetHudOnlyMine;
+        // Load the three per-source caster filters and push them into the tracker, then register the settings window
+        // + launcher tile (needs _targetBuff / _targetHudWindow, which the calls above have now built). Defaults are
+        // all true → show everything, reproducing the prior default (old "only mine" filter shipped OFF).
+        _showMine    = _cfg.Get<bool>("show_mine",    true);
+        _showOthers  = _cfg.Get<bool>("show_others",  true);
+        _showMonster = _cfg.Get<bool>("show_monster", true);
+        _targetBuff.ShowMine    = _showMine;
+        _targetBuff.ShowOthers  = _showOthers;
+        _targetBuff.ShowMonster = _showMonster;
         _breakDiag           = _cfg.Get<bool>("break_diag", false);
         _targetInfo.BreakDiag = _breakDiag;
         _threatDiag           = _cfg.Get<bool>("threat_diag", false);

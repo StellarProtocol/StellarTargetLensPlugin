@@ -55,9 +55,12 @@ internal sealed class TargetBuffTracker
     // Combined buffs + debuffs (the compact Target HUD renders this single merged list).
     public IReadOnlyList<TargetBuffRow> All     => _all;
 
-    // When true, the rebuilt lists exclude effects whose caster (FireUuid) is not the local player, PROVIDED the
-    // local uuid resolves nonzero. Never hides everything when self can't be resolved (see RebuildLists).
-    public bool OnlyMine { get; set; }
+    // Three independent per-source-category filters (default ALL true = show everything). Each row is classified by
+    // its caster (FireUuid) into exactly one of Mine / Other / MonsterOrUnknown (see Category); a row is kept only
+    // when its category's toggle is on. All-true is a fast path that skips classification (see RebuildLists).
+    public bool ShowMine    { get; set; } = true;   // effects the local player applied
+    public bool ShowOthers  { get; set; } = true;   // effects a third party (not me, not the target) applied
+    public bool ShowMonster { get; set; } = true;   // the target's own self-applied effects + unknown-source (0)
 
     // When true, iterate the FULL unfiltered buff list (pBuffList_/buffList_) so internal/no-icon buffs appear;
     // when false (default), iterate the game's display-filtered "showed" list (pShowedBuffList_/showedBuffList_).
@@ -259,26 +262,46 @@ internal sealed class TargetBuffTracker
         return durMs / 1000f;                               // client buff / pre-sync → assume full (unchanged)
     }
 
+    // Source category for a row, classified by caster (FireUuid). Order matters: Mine → MonsterOrUnknown → Other,
+    // each row is exactly one. localUuid/targetUuid may be 0 (unresolved) — a 0 id simply never matches, and an
+    // otherwise-unclassifiable row falls to Other, so classification never throws and never hides on its own.
+    private enum EffectSource { Mine, Other, MonsterOrUnknown }
+
+    private static EffectSource Category(long fire, long localUuid, long targetUuid)
+    {
+        // Mine: strict uuid match OR roleId (>>16) fallback — a self-source uuid can differ from the entity uuid in
+        // the low (client/summon/entType) bits, same encoding nuance as the threat local-player match.
+        if (localUuid != 0 && (fire == localUuid || (fire >> 16) == (localUuid >> 16)))
+            return EffectSource.Mine;
+        // Monster/unknown: no/unresolved source (0), or the target's OWN self-applied effect (strict + roleId).
+        if (fire == 0 || (targetUuid != 0 && (fire == targetUuid || (fire >> 16) == (targetUuid >> 16))))
+            return EffectSource.MonsterOrUnknown;
+        return EffectSource.Other;   // a valid FireUuid that is neither mine nor the target
+    }
+
     private void RebuildLists()
     {
         _buffs.Clear(); _debuffs.Clear(); _all.Clear();
-        // "Only show effects I applied": filter to rows cast by the local player. Guarded so an unresolved self
-        // (localUuid == 0) never hides everything — filtering is skipped entirely in that case.
-        long localUuid = OnlyMine ? _services.CombatSnapshot.LocalEntityId.Value : 0L;
-        long targetUuid = OnlyMine ? _info.LastTargetUuid : 0L;   // keep the target's OWN self-applied effects too
-        bool filterMine = OnlyMine && localUuid != 0L;
+        // Per-category source filter. Fast path: all three on → show everything, skip classification entirely.
+        // Otherwise classify each row and keep it only when its category's toggle is on. Fully guarded: unresolved
+        // ids (localUuid/targetUuid == 0) just fail their equality checks; rows fall to "Other" rather than vanish.
+        bool filter = !(ShowMine && ShowOthers && ShowMonster);
+        long localUuid  = filter ? _services.CombatSnapshot.LocalEntityId.Value : 0L;
+        long targetUuid = filter ? _info.LastTargetUuid : 0L;
         foreach (var row in _persist.Values)
         {
             if (row.Duration > 0 && row.RemainSec < 0.05f) continue;  // render-time expiry guard
-            // Keep rows cast by me OR by the target itself; exclude only when it's neither. The
-            // (FireUuid >> 16) == (targetUuid >> 16) roleId/entId fallback rides alongside the strict match
-            // because a self-source uuid can differ from the entity uuid in the low (client/summon/entType)
-            // bits — same encoding nuance as the threat local-player match. Fully guarded: targetUuid == 0
-            // makes the extra clause inert, so behavior is exactly the old "mine only".
-            if (filterMine
-                && row.FireUuid != localUuid
-                && !(targetUuid != 0 && (row.FireUuid == targetUuid || (row.FireUuid >> 16) == (targetUuid >> 16))))
-                continue;   // not cast by me and not the target's own → exclude
+            if (filter)
+            {
+                var cat = Category(row.FireUuid, localUuid, targetUuid);
+                bool keep = cat switch
+                {
+                    EffectSource.Mine             => ShowMine,
+                    EffectSource.MonsterOrUnknown => ShowMonster,
+                    _                             => ShowOthers,
+                };
+                if (!keep) continue;
+            }
             if (Selection != null && !Selection.ShouldShow(row.BaseId, row.BuffType == 0)) continue;  // user hid this effect
             if (row.BuffType == 0) _debuffs.Add(row);
             else                   _buffs.Add(row);                    // type 1/2 and unknown → Buffs

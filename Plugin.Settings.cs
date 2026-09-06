@@ -6,13 +6,15 @@ namespace Stellar.TargetLens;
 
 // Settings window + desktop-launcher tile for Target Lens (mirrors StellarPositionPlugin's launcher pattern).
 // A GlassMenu Tools window opened from the launcher, holding the plugin's user-facing toggles: master HUD
-// enable and the "only show effects I applied" caster filter. Registered from the ctor after the trackers +
+// enable and the three per-source (mine / others / monster) caster filters. Registered from the ctor after the trackers +
 // Target HUD exist (so _targetHudWindow / _targetBuff are live).
 public sealed partial class Plugin
 {
     private IWindowControl _settingsWindow = null!;   // registered in RegisterSettings(); drained via _windows
     private IDisposable    _launcherEntry  = null!;   // desktop launcher tile; disposed in Dispose()
-    private bool           _targetHudOnlyMine;        // config-backed: filter effect tiles to caster == local player
+    private bool           _showMine    = true;       // config-backed: include effects the local player applied
+    private bool           _showOthers  = true;       // config-backed: include effects a third party applied
+    private bool           _showMonster = true;       // config-backed: include the target's own + unknown-source effects
     private bool           _breakDiag;                // config-backed: TEMPORARY break-gauge diagnostic logging
     private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
 
@@ -46,14 +48,36 @@ public sealed partial class Plugin
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
-                    new ToggleElement(Label: () => "", Get: () => _targetHudOnlyMine, Set: v =>
+                    new ToggleElement(Label: () => "", Get: () => _showMine, Set: v =>
                     {
-                        _targetHudOnlyMine = v;
-                        _targetBuff.OnlyMine = v;
-                        _cfg.Set<bool>("target_hud_only_mine", v);
+                        _showMine = v;
+                        _targetBuff.ShowMine = v;
+                        _cfg.Set<bool>("show_mine", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Only my effects (+ the target's own)"),
+                    new TextElement(() => "Show effects I applied"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showOthers, Set: v =>
+                    {
+                        _showOthers = v;
+                        _targetBuff.ShowOthers = v;
+                        _cfg.Set<bool>("show_others", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Show effects others applied"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showMonster, Set: v =>
+                    {
+                        _showMonster = v;
+                        _targetBuff.ShowMonster = v;
+                        _cfg.Set<bool>("show_monster", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Show monster's own + unknown-source effects"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
