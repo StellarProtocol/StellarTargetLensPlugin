@@ -30,10 +30,12 @@ public sealed partial class Plugin
         // Persisted toggle drives both initial visibility and the ShouldRender gate (default ON — user asked for it).
         _bossTimerOn = _cfg.Get<bool>("boss_timer_on", true);
 
-        const float TimerW = 260f;   // icon + name + a compact MM:SS
-        // Title + BossTimerSlots rows (~21px each) + gaps + padding. Non-resizable content-fit (rows collapse when empty).
+        const float TimerW = 260f;   // default width: icon + name + a compact MM:SS
+        // Title + BossTimerSlots rows (~21px each) + gaps + padding. The window is WIDTH-resizable (drag wider to
+        // fit longer skill names); Resizable disables content-auto-fit and FIXES the height, so we compute an
+        // explicit height here and LOCK it below (MinHeight==MaxHeight) — width drags, height cannot.
         const float TitleReserve = 24f, Pad = 16f;
-        float timerH = TitleReserve + Pad + BossTimerSlots * BuffRowStride;   // ≈ 208
+        float timerH = TitleReserve + Pad + BossTimerSlots * BuffRowStride;   // ≈ 208 (the fixed, locked height)
 
         // The game's native DBM list sits top-LEFT; our other overlays (Target HUD / threat / buff list) live
         // top-RIGHT. Put ours on the LEFT side, mid-upper, so it never overlaps them out of the box. The user's own
@@ -50,6 +52,9 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                // Width-resizable so longer skill names fit; height LOCKED via MinHeight==MaxHeight so only the
+                // width drags. MinWidth ≈ the default width (real drag floor); MaxWidth a generous ceiling.
+                Resizable = true, MinWidth = 240f, MaxWidth = 700f, MinHeight = timerH, MaxHeight = timerH,
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, AND a non-empty DBM list so it
                 // never shows an empty box. NOTE: gated on the list, NOT on a target — the DBM list is global/target-
                 // independent. Layout-edit mode overrides so the overlay (with example rows) can be positioned.

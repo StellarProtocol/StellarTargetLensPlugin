@@ -45,11 +45,24 @@ public sealed partial class Plugin
     }
 
     // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned MM:SS.
+    // The window is width-resizable, so the char budget scales with the current width (mirrors EffTilesPerLine's
+    // width-aware pattern) — drag wider to reveal more of a long skill name.
     private string BossTimerName(int idx)
     {
         var list = BossTimerRows();
         if (idx >= list.Count) return "";
-        return Truncate(StripTags(list[idx].Name), BuffListNameBudget);
+        return Truncate(StripTags(list[idx].Name), BossTimerNameBudget());
+    }
+
+    // Name char budget derived from the current window width. Available name pixels ≈ Width − padding(16) −
+    // icon cell(22) − gap(6) − MM:SS reserve(~48); at ~7.6px per char (font 13). At the 260 default this yields
+    // ~22 chars — the same as the old fixed BuffListNameBudget, so the default look is unchanged.
+    private int BossTimerNameBudget()
+    {
+        float w = _bossTimerWindow != null ? _bossTimerWindow.Rect.Width : 0f;
+        if (w < 1f) w = 260f;                                   // pre-mount fallback = default width
+        int budget = (int)((w - 92f) / 7.6f);
+        return System.Math.Clamp(budget, 8, 80);
     }
 
     // MM:SS countdown inside the bar (right), zero-padded to match the game (e.g. 00:08, 01:05). Floors the
