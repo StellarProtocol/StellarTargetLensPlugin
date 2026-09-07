@@ -23,10 +23,14 @@ namespace Stellar.TargetLens;
 /// <c>Duration</c> (seconds vs milliseconds) is validated in-game via the diagnostic below; the single
 /// conversion point is <see cref="DurationIsSeconds"/> (default: assume ms — flip if the diag shows seconds).</para>
 ///
-/// <para>Everything is guarded and frame-cached: one read per frame, a failed/missing resolve degrades to an
-/// empty list, and the poll/render path never throws. The server clock reuses the same gated
-/// <c>ZServerTime.GetServerTime</c> read (with the ≈2020 sanity floor) that <see cref="TargetBuffTracker"/> uses;
-/// an untrusted/zero clock yields an empty list rather than garbage countdowns.</para>
+/// <para>Everything is guarded and frame-cached: one read per frame, a failed/missing resolve degrades gracefully,
+/// and the poll/render path never throws. Because <c>DbmInfoDict</c> intermittently returns null/empty even mid-fight
+/// (and a skill only sits in the dict during its own countdown window), the display is NOT mirrored from the raw dict
+/// each frame — each readable entry is upserted into a persistent latch keyed by <c>DbmId</c>, and entries are held
+/// there (counting smoothly to 0) until they genuinely expire, so a transient null/empty dict frame no longer blanks
+/// the overlay. The server clock reuses the same gated <c>ZServerTime.GetServerTime</c> read (with the ≈2020 sanity
+/// floor) that <see cref="TargetBuffTracker"/> uses; an untrusted/zero clock returns the last-built list rather than
+/// garbage countdowns. The latch resets on encounter exit (the DBMMgr singleton going away).</para>
 /// </summary>
 public readonly struct DbmEntry
 {
@@ -55,6 +59,17 @@ internal sealed class BossDbmTracker
     private readonly IPluginServices _services;
     private readonly List<DbmEntry>  _current = new();
 
+    // ── Persistent latch (keyed by DbmId) ─────────────────────────────────────────────────────────────────
+    // DbmInfoDict intermittently returns null/empty even mid-fight (validated in-game: [BossDbm] census showed
+    // inst=True dictObj=False count=-1 / count=0 during a live fight), and any given skill only sits in the dict
+    // during its own countdown window. Mirroring the raw dict frame-by-frame therefore blanked the overlay on
+    // every null/empty frame → flicker. Instead we UPSERT each entry we can read into this latch and drive the
+    // display from it, so an entry survives null/empty dict frames and is dropped ONLY when it genuinely expires
+    // (remain ≤ 0) or the game marks it dead. Name is cached alongside so a latched entry whose dict row vanished
+    // still renders its label. Reset on encounter exit (singleton gone) — see Refresh.
+    private readonly Dictionary<int, (long beginMs, long durMs, string name)> _latch = new();
+    private readonly List<int> _expired = new();   // scratch reused each build to remove expired keys after iterating
+
     // Opt-in raw census log (mirrors the other trackers' *Diag flags) — validates Duration units + the clock.
     public bool DbmDiag;
 
@@ -82,65 +97,99 @@ internal sealed class BossDbmTracker
 
     private void Refresh()
     {
-        _current.Clear();
-        if (!EnsureRefl()) { EmitCensus(false, false, -1, 0, ""); return; }   // DBMMgr type / getter not resolvable
+        if (!EnsureRefl()) { ResetLatch(); EmitCensus(false, false, -1, 0, "", 0); return; }   // DBMMgr type / getter not resolvable
 
         object? inst = ResolveSingletonInstance();   // ZSingleton<DBMMgr>.Instance (base-chain + FlattenHierarchy fallback)
-        if (inst == null) { EmitCensus(false, false, -1, 0, ""); return; }    // singleton not up yet → retry next frame
+        // A null singleton means no active encounter (DBMMgr only exists during a fight) → this is the one signal
+        // we treat as "encounter exit": reset the latch so the next fight never inherits stale countdowns. (The
+        // tracker has no direct phase view here; the singleton's lifetime is the clean encounter boundary, and the
+        // per-entry expiry below otherwise bounds any staleness to a single countdown window.)
+        if (inst == null) { ResetLatch(); EmitCensus(false, false, -1, 0, "", 0); return; }
 
         object? dict = null;
         try { dict = _miGetDict?.Invoke(inst, null); } catch { }
-        if (dict == null) { EmitCensus(true, false, -1, 0, ""); return; }
-        LogDictTypeOnce(dict);
+        // NOTE: dict == null is the intermittent case that used to blank the overlay. We DON'T bail here anymore —
+        // we keep the latch and rebuild the display from it below (Phase 3).
 
-        int count = TryCount(dict);                  // authoritative entry count (-1 if the getter isn't readable)
-
-        long now = ServerNowMs();
-        // Sanity-gate the clock: a real synced server time is a large Unix-epoch ms value. A tiny/zero value means
-        // pre-sync or unavailable → we can't compute a meaningful countdown, so skip the list (don't show garbage).
-        // Still emit the census so the log shows inst/dict/count even when the clock isn't ready.
-        if (now < 1_600_000_000_000L) { EmitCensus(true, true, count, 0, "clock<2020"); return; }
-
+        int    count       = -1;                     // dict's own Count (-1 if unreadable / dict null this frame)
         int    censusCount = 0;
         int    enumerated  = 0;
         string firstRaw    = "";
 
-        // Iterate the IL2CPP dictionary VALUES robustly (see ReadDictValues — managed-IEnumerable → Keys+indexer →
-        // value-enumerator ladder). The old System.Reflection Values-enumerator path silently yielded nothing here.
-        foreach (var info in ReadDictValues(dict))
+        long now = ServerNowMs();
+        // Sanity-gate the clock: a real synced server time is a large Unix-epoch ms value. A tiny/zero value means
+        // pre-sync or unavailable → we can't compute a meaningful countdown this frame.
+        bool clockOk = now >= 1_600_000_000_000L;
+
+        // ── Phase 1: UPSERT whatever the dict holds this frame into the latch (no clock needed) ───────────────
+        if (dict != null)
         {
-            if (info == null) continue;
-            if (!_membersResolved) ResolveMembers(info);
-            if (_miName == null) break;            // struct members never resolved → give up this frame
+            LogDictTypeOnce(dict);
+            count = TryCount(dict);                  // authoritative entry count (-1 if the getter isn't readable)
 
-            enumerated++;
-            bool   isDead = ReadBool(_miIsDead, info);
-            int    dbmId = (int)ReadLong(_miDbmId, info);
-            long   begin = ReadLong(_miBeginTime, info);
-            long   rawDur = ReadLong(_miDuration, info);
-            string name  = ReadString(_miName, info);
+            // Iterate the IL2CPP dictionary VALUES robustly (see ReadDictValues — managed-IEnumerable → Keys+indexer →
+            // value-enumerator ladder). The old System.Reflection Values-enumerator path silently yielded nothing here.
+            foreach (var info in ReadDictValues(dict))
+            {
+                if (info == null) continue;
+                if (!_membersResolved) ResolveMembers(info);
+                if (_miName == null) break;            // struct members never resolved → give up this frame
 
-            if (enumerated == 1)                   // first raw entry → into the always-on census line
-                firstRaw = $"[{dbmId} '{name}' begin={begin} dur={rawDur}]";
+                enumerated++;
+                bool   isDead = ReadBool(_miIsDead, info);
+                int    dbmId  = (int)ReadLong(_miDbmId, info);
+                long   begin  = ReadLong(_miBeginTime, info);
+                long   rawDur = ReadLong(_miDuration, info);
+                string name   = ReadString(_miName, info);
 
-            long durMs   = DurationMs(rawDur);
-            float remain = (begin + durMs - now) / 1000f;
-            float total  = durMs / 1000f;
+                if (enumerated == 1)                   // first raw entry → into the always-on census line
+                    firstRaw = $"[{dbmId} '{name}' begin={begin} dur={rawDur}]";
 
-            if (DbmDiag)
-                LogCensus(dbmId, name, begin, rawDur, remain, ref censusCount);
+                long durMs = DurationMs(rawDur);
 
-            if (isDead) continue;                  // skill already resolved this cycle
-            if (remain <= 0f) continue;            // already fired / expired → drop
-            _current.Add(new DbmEntry(dbmId, string.IsNullOrEmpty(name) ? $"#{dbmId}" : name, remain, total));
+                if (DbmDiag && clockOk)                 // diag remain is meaningless without a trusted clock
+                    LogCensus(dbmId, name, begin, rawDur, (begin + durMs - now) / 1000f, ref censusCount);
+
+                // isDead = the game resolved this skill this cycle → it must not display. Drop it from the latch;
+                // a re-arm re-adds it (isDead=false, fresh BeginTime) the next frame it appears in the dict.
+                if (isDead) { _latch.Remove(dbmId); continue; }
+
+                // Overwrite with the latest values so a re-armed skill's new BeginTime refreshes its countdown.
+                _latch[dbmId] = (begin, durMs, name);
+            }
         }
+
+        // ── Phase 2: an untrusted clock can't produce a meaningful countdown. Skip the rebuild WITHOUT clearing
+        // the latch or _current — return the last-built list rather than blanking on a bad clock. ──────────────
+        if (!clockOk) { EmitCensus(true, dict != null, count, enumerated, firstRaw, _latch.Count); return; }
+
+        // ── Phase 3: build the display straight from the latch. Entries persist across null/empty dict frames and
+        // count smoothly to 0; only a genuinely expired entry (remain ≤ 0) is dropped from the latch here. ──────
+        _current.Clear();
+        _expired.Clear();
+        foreach (var kv in _latch)
+        {
+            var (beginMs, durMs, name) = kv.Value;
+            float remain = (beginMs + durMs - now) / 1000f;
+            if (remain <= 0f) { _expired.Add(kv.Key); continue; }   // genuinely expired → remove after the loop
+            float total = durMs / 1000f;
+            _current.Add(new DbmEntry(kv.Key, string.IsNullOrEmpty(name) ? $"#{kv.Key}" : name, remain, total));
+        }
+        for (int i = 0; i < _expired.Count; i++) _latch.Remove(_expired[i]);
 
         // Soonest cast first (game orders the list by imminence).
         _current.Sort((a, b) => a.RemainSec.CompareTo(b.RemainSec));
         if (_current.Count > Cap) _current.RemoveRange(Cap, _current.Count - Cap);
 
-        EmitCensus(true, true, count, enumerated, firstRaw);
+        EmitCensus(true, dict != null, count, enumerated, firstRaw, _latch.Count);
         FlushCensus(now, censusCount);
+    }
+
+    // Clear both the latch and the display — used only on genuine encounter-exit paths (no singleton / no refl).
+    private void ResetLatch()
+    {
+        _latch.Clear();
+        _current.Clear();
     }
 
     // ── Singleton instance resolve (StellarInterop first, then the explicit FlattenHierarchy walk) ────────────
@@ -351,9 +400,10 @@ internal sealed class BossDbmTracker
     // and the first raw entry. A null singleton, an empty dict, and an enumeration failure are now distinguishable.
     private string _censusSig = "";
 
-    private void EmitCensus(bool inst, bool dictObj, int count, int enumerated, string firstRaw)
+    private void EmitCensus(bool inst, bool dictObj, int count, int enumerated, string firstRaw, int latched)
     {
-        string sig = $"inst={inst} dictObj={dictObj} count={count} enumerated={enumerated} " +
+        // latched = current latch size — proves entries are held across null/empty dict frames (count=-1/0).
+        string sig = $"inst={inst} dictObj={dictObj} count={count} enumerated={enumerated} latched={latched} " +
                      $"strat={(_dictStrat.Length == 0 ? "-" : _dictStrat)} " +
                      $"firstRaw={(firstRaw.Length == 0 ? "-" : firstRaw)}";
         if (sig == _censusSig) return;             // only log on state CHANGE
