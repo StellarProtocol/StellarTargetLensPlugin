@@ -44,10 +44,10 @@ public readonly struct DbmEntry
 internal sealed class BossDbmTracker
 {
     // ── Duration unit switch (VALIDATE in-game via DbmDiag) ──────────────────────────────────────────────
-    // DbmTable.CountCDTime values are small (5/10/15/20), so DBMDataInfo.Duration is plausibly SECONDS. But it may
-    // already be milliseconds. This is the ONE place the units are decided: DurationMs() below multiplies by 1000
-    // only when this is true. Default = false (assume ms). Flip to true if [DbmDiag] shows raw dur ≈ 5..20.
-    private const bool  DurationIsSeconds = false;
+    // DBMDataInfo.Duration is SECONDS — confirmed in-game: [DbmDiag] showed raw dur=20 for a 20s CountCDTime skill.
+    // This is the ONE place the units are decided: DurationMs() below multiplies by 1000 to convert to the ms clock
+    // that BeginTime is stamped in. (Was previously false/assume-ms, which made every countdown instantly expire.)
+    private const bool  DurationIsSeconds = true;
     private static long DurationMs(long rawDuration) => DurationIsSeconds ? rawDuration * 1000L : rawDuration;
 
     private const int Cap = 12;   // render-list safety cap (window pool is smaller; this just bounds the sort)
