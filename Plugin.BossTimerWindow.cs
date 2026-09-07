@@ -13,7 +13,8 @@ namespace Stellar.TargetLens;
 // This shows the whole upcoming-skill schedule for the encounter. The list is a single GLOBAL encounter list
 // (NOT keyed per target), so it gates on the list being non-empty, not on having a target.
 //
-// Data: BossDbmTracker.Current (read from Panda.ZUi.DBMMgr.DbmInfoDict). Row getters + the OWN icon-UV pool live
+// Data: BossDbmTracker.Current (fed by a Harmony postfix on Panda.ZUi.DBMMgr.onDBMDatacChanged — see DbmPatch.cs).
+// Row getters + the OWN icon-UV pool live
 // in Plugin.BossTimer.cs.
 public sealed partial class Plugin
 {

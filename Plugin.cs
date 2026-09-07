@@ -33,6 +33,8 @@ public sealed partial class Plugin : IStellarPlugin
 
         // Buff name/type/source-skill resolution used by the target buff tracker (own Harmony host, auto-unpatched).
         BuffTrackPatch.Install(_services.Harmony.Create("buff"), _services.Log.Info);
+        // Boss DBM (deadly-skill) capture — postfix on DBMMgr.onDBMDatacChanged feeds BossDbmTracker (own host).
+        DbmPatch.Install(_services.Harmony.Create("dbm"), _services.Log.Info);
 
         _targetInfo = new TargetInfoTracker(_services);
         _targetBuff = new TargetBuffTracker(_services, _targetInfo);
