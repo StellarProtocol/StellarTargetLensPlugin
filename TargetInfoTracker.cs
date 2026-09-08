@@ -168,8 +168,6 @@ internal sealed partial class TargetInfoTracker
     }
 
     // Target uuid priority: ECS PlayerEnt.GetAttrTargetId() → legacy attr bag (AttrTargetId 30 → 450) → ZWorld lock.
-    private string _lastSource = "";
-    private int    _rawDiagFrame = -1;
     private long ReadTargetUuid(long localUuid)
     {
         long ecs    = ReadEcsTargetId();
@@ -178,25 +176,11 @@ internal sealed partial class TargetInfoTracker
         long attr450= localEnt != null ? ReadAttr(localEnt, _attrTargetUuidBox) : 0;
         long lk     = ReadLockTargetUuid();
 
-        // Raw diagnostic every ~2s: every candidate value even when nothing resolves (which source carries target).
-        int f = Time.frameCount;
-        if (f - _rawDiagFrame >= 120)
-        {
-            _rawDiagFrame = f;
-            _services.Log.Info($"[Target] raw local={localUuid} ecs={ecs} attr30={attr30} attr450={attr450} zworld={lk} playerEnt={_piPlayerEnt != null} ext={_miGetAttrTargetIdExt != null}");
-        }
-
-        if (ecs    != 0 && ecs    != localUuid) return LogSource("ecs", ecs);
-        if (attr30 != 0 && attr30 != localUuid) return LogSource("attr30", attr30);
-        if (attr450!= 0 && attr450!= localUuid) return LogSource("attr450", attr450);
-        if (lk     != 0 && lk     != localUuid) return LogSource("zworld", lk);
+        if (ecs    != 0 && ecs    != localUuid) return ecs;
+        if (attr30 != 0 && attr30 != localUuid) return attr30;
+        if (attr450!= 0 && attr450!= localUuid) return attr450;
+        if (lk     != 0 && lk     != localUuid) return lk;
         return 0;
-    }
-
-    private long LogSource(string src, long uuid)
-    {
-        if (src != _lastSource) { _lastSource = src; _services.Log.Info($"[Target] source={src} uuid={uuid}"); }
-        return uuid;
     }
 
     private string ResolveName(long uuid)
@@ -214,14 +198,13 @@ internal sealed partial class TargetInfoTracker
     private string ResolveMonsterName(long configId)
     {
         if (configId <= 0 || _monTblType == null || _miMonGetTable == null || _piMonName == null) return "";
-        bool tblOk = false, rowOk = false;
+        bool rowOk = false;
         string name = "";
         try
         {
             // Table instance is a singleton — resolve once, then lazily resolve TryGetValue off its runtime type.
             _monTblObj ??= _miMonGetTable.Invoke(null, new object[] { false });
             var tableObj = _monTblObj;
-            tblOk = tableObj != null;
             if (tableObj != null)
             {
                 if (!_monTryGetResolved)
@@ -242,12 +225,6 @@ internal sealed partial class TargetInfoTracker
         }
         catch { name = ""; }
 
-        // Change-gated diagnostic (fires once per distinct configId) so the next in-game run confirms the lookup.
-        if (configId != _lastMonCfgIdDiag)
-        {
-            _lastMonCfgIdDiag = configId;
-            _services.Log.Info($"[Target] monName cfgId={configId} tblOk={tblOk} rowOk={rowOk} name={name}");
-        }
         return name;
     }
 
@@ -315,7 +292,6 @@ internal sealed partial class TargetInfoTracker
     private object?       _monTblObj;             // cached table instance (singleton — resolved once)
     private MethodInfo?   _miMonTryGetValue;      // ZTable<int,MonsterTableBase>.TryGetValue(int, out row, bool)
     private bool          _monTryGetResolved;
-    private long          _lastMonCfgIdDiag = long.MinValue; // change-gate for the config-table diagnostic
 
     private bool EnsureApi()
     {
