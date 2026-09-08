@@ -77,6 +77,8 @@ public sealed partial class Plugin : IStellarPlugin
         CastPatch.Diag        = _castDiag;   // begin/end event logging lives in the patch (where the events fire)
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
         _targetBuff.ShowHidden = _showHidden;
+        _hidePermanent            = _cfg.Get<bool>("hide_permanent", true);   // default ON: permanent/no-timer effects hidden
+        _targetBuff.HidePermanent = _hidePermanent;
         RegisterSettings();
         RegisterSelectWindow();   // effect picker opened from the settings window's "Select effects…" button
 

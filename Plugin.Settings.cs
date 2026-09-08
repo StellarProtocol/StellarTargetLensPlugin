@@ -17,6 +17,7 @@ public sealed partial class Plugin
     private bool           _showMonster = true;       // config-backed: include the target's own + unknown-source effects
     private bool           _breakDiag;                // config-backed: TEMPORARY break-gauge diagnostic logging
     private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
+    private bool           _hidePermanent = true;     // config-backed: drop permanent / no-timer effects (default ON)
     private bool           _dbmDiag;                  // config-backed: TEMPORARY boss skill-timer (DBM) diagnostic logging
 
     private void RegisterSettings()
@@ -95,6 +96,17 @@ public sealed partial class Plugin
                 {
                     new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
                     new TextElement(() => "Show hidden effects"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
+                    {
+                        _hidePermanent = v;
+                        _targetBuff.HidePermanent = v;
+                        _cfg.Set<bool>("hide_permanent", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Hide permanent target buffs"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {

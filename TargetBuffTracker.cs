@@ -67,6 +67,12 @@ internal sealed class TargetBuffTracker
     // Set from Plugin on load and whenever the "Show hidden effects" toggle changes.
     public bool ShowHidden { get; set; }
 
+    // When true (default), drop permanent / no-timer effects (Duration <= 0 ms, i.e. ComputeSnapRemain returns -1)
+    // from both display styles — they'd otherwise render with a blank countdown forever. Set from Plugin on load and
+    // whenever the "Hide permanent target buffs" toggle changes. (Timed effects near 0s are already dropped by the
+    // render-time expiry guard, so this only covers the truly permanent case.)
+    public bool HidePermanent = true;
+
     // User's per-effect show/hide selection (buffs + debuffs, each with an include-only/exclude mode). When set,
     // RebuildLists skips rows the selection hides. Null (unset) shows everything (default until wired in).
     public TargetEffectSelection? Selection { get; set; }
@@ -291,6 +297,7 @@ internal sealed class TargetBuffTracker
         foreach (var row in _persist.Values)
         {
             if (row.Duration > 0 && row.RemainSec < 0.05f) continue;  // render-time expiry guard
+            if (HidePermanent && row.Duration <= 0) continue;         // hide permanent / no-timer effects (blank countdown)
             if (filter)
             {
                 var cat = Category(row.FireUuid, localUuid, targetUuid);
