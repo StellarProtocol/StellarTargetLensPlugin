@@ -30,6 +30,12 @@ public sealed partial class Plugin
     private const string BuffListMarker    = "★ ";                         // leading "yours" marker on self-cast rows
     private const int   BuffListMarkerWidth = 2;                          // BuffListMarker.Length — shave it off the name budget so the star doesn't grow the row
 
+    // Buff base-ids that must resolve to their OWN table icon, bypassing the source-skill icon step below. These are
+    // boss enrage-TIMER buffs ("Power Seal") applied by a boss mechanic skill: the buff's own icon is correct
+    // (buff_talent_skill_330301) but the applying skill's icon is unrelated, so the normal source-skill-first order
+    // picks the wrong art. All four are "Boss hard Enrage timer" sharing that icon.
+    private static readonly HashSet<int> ForceOwnBuffIcon = new() { 501706, 501710, 501714, 995191 };
+
     // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
     // (GetBuffListIcon). Order: manual override → Imagine icon on the source skill → skill icon → the buff's OWN
     // icon. LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
@@ -37,6 +43,9 @@ public sealed partial class Plugin
     private object? ResolveEffectIcon(TargetBuffRow r, out UvRect uv)
     {
         uv = default;
+        // Timer buffs whose source-skill icon is unrelated → force the buff's own table icon (see ForceOwnBuffIcon).
+        if (ForceOwnBuffIcon.Contains(r.BaseId))
+            return _services.GameAssets.LoadBuffIcon(r.BaseId, out uv);
         if (EffectOverrides.TryGetValue(r.BaseId, out var ov))
             return _services.GameAssets.LoadImagineIcon(ov.IconSkill, out uv);
         if (r.SkillId > 0)
