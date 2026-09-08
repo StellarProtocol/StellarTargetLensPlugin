@@ -41,17 +41,26 @@ public sealed partial class Plugin
     };
 
     // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
-    // (GetBuffListIcon). Order: manual override → Imagine icon on the source skill → skill icon → the buff's OWN
-    // icon. LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
+    // (GetBuffListIcon). The source-skill icon swap is meaningful ONLY for a PLAYER-applied effect — for those we
+    // want the applying class-skill's art (e.g. "your Firestorm" shows your skill icon). A boss's OWN buff (source =
+    // the current target monster) or an effect with an UNKNOWN source (no caster) has no meaningful player skill to
+    // swap to, so its own table icon is the correct art. Order:
+    //   1. manual override (highest) → Imagine icon on the configured skill.
+    //   2. own-icon: ForceOwnBuffIcon safety net OR IsOwnOrUnknownSource (boss-own / no-caster) → the buff's OWN icon.
+    //   3. player-applied swap: source skill → Imagine icon, then skill icon.
+    //   4. fallback → the buff's own icon.
+    // LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
     // GetImagineForSkill); fall through on null so an effect whose skill icon doesn't load still shows its buff icon.
     private object? ResolveEffectIcon(TargetBuffRow r, out UvRect uv)
     {
         uv = default;
-        // Timer buffs whose source-skill icon is unrelated → force the buff's own table icon (see ForceOwnBuffIcon).
-        if (ForceOwnBuffIcon.Contains(r.BaseId))
-            return _services.GameAssets.LoadBuffIcon(r.BaseId, out uv);
+        // 1. Manual override wins outright.
         if (EffectOverrides.TryGetValue(r.BaseId, out var ov))
             return _services.GameAssets.LoadImagineIcon(ov.IconSkill, out uv);
+        // 2. Boss-own / unknown source (or the explicit enrage-timer safety net) → the buff's OWN table icon; no swap.
+        if (ForceOwnBuffIcon.Contains(r.BaseId) || IsOwnOrUnknownSource(r))
+            return _services.GameAssets.LoadBuffIcon(r.BaseId, out uv);
+        // 3. Player-applied effect → prefer the applying skill's icon.
         if (r.SkillId > 0)
         {
             var img = _services.GameAssets.LoadImagineIcon(r.SkillId, out uv);
@@ -59,7 +68,20 @@ public sealed partial class Plugin
             var sk = _services.GameAssets.LoadSkillIcon(r.SkillId, out uv);
             if (sk != null) return sk;
         }
+        // 4. Fallback.
         return _services.GameAssets.LoadBuffIcon(r.BaseId, out uv);
+    }
+
+    // True when the effect's caster is the current target monster ITSELF or is unknown (no caster). Guarded: a 0
+    // FireUuid (no caster) always counts; a 0 target uuid (no target / not yet resolved) means only the no-caster
+    // case is caught. The uuid>>16 compare matches the entity's config id so a boss whose per-instance uuid differs
+    // from its selected-target uuid still resolves as "own". A PLAYER-cast effect (mine or another player's) has a
+    // non-zero FireUuid that is neither the target nor shares its config id, so it correctly falls through to the swap.
+    private bool IsOwnOrUnknownSource(TargetBuffRow r)
+    {
+        long tgt = _targetInfo != null ? _targetInfo.LastTargetUuid : 0;
+        return r.FireUuid == 0
+            || (tgt != 0 && (r.FireUuid == tgt || (r.FireUuid >> 16) == (tgt >> 16)));
     }
 
     // ── Height-driven row count ──────────────────────────────────────────────────
