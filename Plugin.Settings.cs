@@ -45,7 +45,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("target_hud_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show Target HUD (top-right overlay)"),
+                    new TextElement(() => "Show Target HP HUD"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -65,12 +65,12 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("hide_permanent", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Hide permanent target buffs"),
+                    new TextElement(() => "Hide permanent buffs/debuffs"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
-                    new TextElement(() => "Show hidden effects"),
+                    new TextElement(() => "Show hidden buffs/debuffs"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -81,7 +81,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_mine", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show effects I applied"),
+                    new TextElement(() => "Show buffs/debuffs I applied"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -92,7 +92,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_others", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show effects others applied"),
+                    new TextElement(() => "Show buffs/debuffs others applied"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -103,7 +103,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_monster", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show monster's own + unknown-source effects"),
+                    new TextElement(() => "Show monster's own + unknown-source buffs/debuffs"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
