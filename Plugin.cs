@@ -35,6 +35,9 @@ public sealed partial class Plugin : IStellarPlugin
         BuffTrackPatch.Install(_services.Harmony.Create("buff"), _services.Log.Info);
         // Boss DBM (deadly-skill) capture — postfix on DBMMgr.onDBMDatacChanged feeds BossDbmTracker (own host).
         DbmPatch.Install(_services.Harmony.Create("dbm"), _services.Log.Info);
+        // Cast/channel capture — postfixes on ZStateSkillComp.beginSingGuide/endSingGuide feed the cast-bar read for
+        // ANY target (boss/elite/normal mob). Own Harmony host, auto-unpatched on dispose.
+        CastPatch.Install(_services.Harmony.Create("cast"), _services.Log.Info);
 
         _targetInfo = new TargetInfoTracker(_services);
         _targetBuff = new TargetBuffTracker(_services, _targetInfo);
@@ -71,6 +74,7 @@ public sealed partial class Plugin : IStellarPlugin
         _bossDbm.DbmDiag      = _dbmDiag;
         _castDiag             = _cfg.Get<bool>("cast_diag", false);
         _targetInfo.CastDiag  = _castDiag;
+        CastPatch.Diag        = _castDiag;   // begin/end event logging lives in the patch (where the events fire)
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
         _targetBuff.ShowHidden = _showHidden;
         RegisterSettings();
@@ -86,6 +90,7 @@ public sealed partial class Plugin : IStellarPlugin
     {
         try { _services.Framework.Update -= OnTargetHudUpdate; } catch { }
         BuffTrackPatch.Uninstall();
+        CastPatch.Uninstall();
         _launcherEntry?.Dispose();
         _monIcon?.Dispose();
         foreach (var w in _windows) w.Remove();

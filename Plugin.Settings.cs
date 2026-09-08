@@ -155,7 +155,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("cast_bar_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show boss cast bar"),
+                    new TextElement(() => "Show cast bar"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -163,6 +163,7 @@ public sealed partial class Plugin
                     {
                         _castDiag = v;
                         _targetInfo.CastDiag = v;
+                        CastPatch.Diag = v;   // keep the patch's begin/end event logging in sync with the toggle
                         _cfg.Set<bool>("cast_diag", v);
                         _cfg.Save();
                     }),
