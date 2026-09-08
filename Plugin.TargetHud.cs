@@ -77,9 +77,10 @@ public sealed partial class Plugin
         int style = _cfg.Get<int>("buff_style", 1);
         float HudH = style == 0 ? 240f : 140f;
         // Default position tuned in-game (user's saved 2560x1440 layout: x=984, y=0, width widened to 732).
-        // X is expressed as a fraction of ScreenWidth (0.3844*2560≈984) so it holds across resolutions; y absolute.
-        // A user's own saved drag still overrides this.
-        float x = _services.Framework.ScreenWidth * 0.3844f;
+        // Fixed 1440p-calibrated pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path
+        // where ScreenWidth is 0, so 0*frac collapsed every window to x=0 — an absolute px restores correctly.
+        // y absolute. A user's own saved drag still overrides this.
+        float x = 984f;
         float y = 0f;
 
         _targetHudWindow = _services.Windows.Register(new WindowRegistration(

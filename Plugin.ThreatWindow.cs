@@ -24,9 +24,10 @@ public sealed partial class Plugin
         // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.
         const float ThreatH = 150f;
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). X is a fraction of
-        // ScreenWidth (0.6704*2560≈1716) so it holds across resolutions; y absolute. Own saved drag overrides.
-        float x = _services.Framework.ScreenWidth * 0.6704f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). Fixed 1440p-calibrated
+        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
+        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
+        float x = 1716f;
         float y = 4f;
 
         _threatWindow = _services.Windows.Register(new WindowRegistration(

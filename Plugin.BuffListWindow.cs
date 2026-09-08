@@ -31,9 +31,10 @@ public sealed partial class Plugin
         float maxH = TitleReserve + Pad + MaxRows * BuffRowStride;   // ≈ 376 (full 16-row pool)
         float defH = 376f;   // out-of-box height = user's saved layout (16 rows; == maxH, top of the resize band)
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). X is a fraction of
-        // ScreenWidth (0.2695*2560≈690) so it holds across resolutions; y absolute. Own saved drag/resize overrides.
-        float x = _services.Framework.ScreenWidth * 0.2695f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). Fixed 1440p-calibrated
+        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
+        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
+        float x = 690f;
         float y = 73f;
 
         _buffListWindow = _services.Windows.Register(new WindowRegistration(

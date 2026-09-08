@@ -38,9 +38,10 @@ public sealed partial class Plugin
         const float TitleReserve = 24f, Pad = 16f;
         float timerH = TitleReserve + Pad + BossTimerSlots * BuffRowStride;   // ≈ 208 (the fixed, locked height)
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=0). X is a fraction of
-        // ScreenWidth (0.2695*2560≈690) so it holds across resolutions; y absolute. Own saved drag/resize overrides.
-        float x = _services.Framework.ScreenWidth * 0.2695f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=0). Fixed 1440p-calibrated
+        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
+        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
+        float x = 690f;
         float y = 0f;
 
         _bossTimerWindow = _services.Windows.Register(new WindowRegistration(
