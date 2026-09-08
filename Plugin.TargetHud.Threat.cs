@@ -13,7 +13,7 @@ namespace Stellar.TargetLens;
 // always visible. The window (not this file) owns visibility gating on the "Show threat / aggro list" toggle.
 public sealed partial class Plugin
 {
-    private bool _showThreat;   // config-backed: show the threat/aggro window (default OFF)
+    private bool _showThreat = true;   // config-backed: show the threat/aggro window (default ON)
 
     private const int   ThreatTopN   = 4;      // number of highest-aggro rows shown
     private const int   ThreatSlots   = ThreatTopN + 1; // + 1 for the local player's appended row

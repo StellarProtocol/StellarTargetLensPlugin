@@ -19,8 +19,8 @@ public sealed partial class Plugin
 
     private void RegisterBuffListWindow()
     {
-        // Persisted style drives both the window's initial visibility and its ShouldRender gate (0 = Classic default).
-        _buffStyle = _cfg.Get<int>("buff_style", 0);
+        // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = List default).
+        _buffStyle = _cfg.Get<int>("buff_style", 1);
 
         const float ListW = 300f;                 // min width — enough for a mini icon + a name + a compact time
         const float TitleReserve = 24f;           // title line + gap (matches BuffList.cs)

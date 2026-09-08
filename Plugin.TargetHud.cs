@@ -67,15 +67,15 @@ public sealed partial class Plugin
         // WindowBuilder-Patterns.md), so it's chosen ONCE here from the PERSISTED buff style. Read straight from
         // _cfg (not _buffStyle) so it doesn't depend on which partial's ctor sets that field first.
         //   Classic (0): full 240 — header + HP + break bars + the effect-tile grid.
-        //   List    (1): compact — the tile grid collapses (gated on _buffStyle==0 in BuildTargetHudRoot; the
-        //                standalone Target Effects window renders the effects instead), so drop that band. The
-        //                break/stagger gauge MUST still fit (bosses show it in List mode too).
+        //   List (1) / Off (2): compact — no tile grid in the HUD (List renders effects in the standalone Target
+        //                Effects window; Off shows nothing), so drop that band. Only Classic keeps the tall height.
+        //                The break/stagger gauge MUST still fit (bosses show it in List/Off mode too).
         // Compact derivation from BuildTargetHudRoot (ColumnElement Gap 4, Padding 8): 8 pad-top + 52 header
         // (52px portrait) + 4 + 28 HP bar + 4 + 18 break bar + 8 pad-bottom = 122 core; +18 margin to absorb
         // any gaps the collapsed conditional slots still reserve and font metrics → 140.
         // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
-        int style = _cfg.Get<int>("buff_style", 0);
-        float HudH = style == 1 ? 140f : 240f;
+        int style = _cfg.Get<int>("buff_style", 1);
+        float HudH = style == 0 ? 240f : 140f;
         // Default position tuned in-game (user's saved 2560x1440 layout: x=988, y=0, width widened to 601).
         // X is expressed as a fraction of ScreenWidth (0.386*2560≈988) so it holds across resolutions; y absolute.
         // A user's own saved drag still overrides this.

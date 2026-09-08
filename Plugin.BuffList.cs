@@ -12,15 +12,17 @@ namespace Stellar.TargetLens;
 // logic is extracted here as ResolveEffectIcon and called by BOTH the classic tiles and this list.
 public sealed partial class Plugin
 {
-    // Buff/debuff display style: 0 = Classic (tiles inside the Target HUD, the default), 1 = List (this window).
+    // Buff/debuff display style: 0 = Classic (tiles inside the Target HUD), 1 = List (this window, the default),
+    // 2 = Off (no buff/debuff display at all — neither tiles nor the list window).
     // Loaded in RegisterBuffListWindow (mirrors how _showThreat is loaded in RegisterThreatWindow).
-    private int _buffStyle;
+    private int _buffStyle = 1;
 
-    // Dropdown option order MUST match the style ints above (index 0 = Classic, 1 = List).
+    // Dropdown option order MUST match the style ints above (index 0 = Classic, 1 = List, 2 = Off).
     private static readonly IReadOnlyList<string> BuffStyleOptions = new[]
     {
         "Classic (in Target HUD)",
         "List (separate window)",
+        "Off (hidden)",
     };
 
     private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)

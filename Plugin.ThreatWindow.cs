@@ -18,7 +18,7 @@ public sealed partial class Plugin
     private void RegisterThreatWindow()
     {
         // Persisted toggle drives both the window's initial visibility and its ShouldRender gate.
-        _showThreat = _cfg.Get<bool>("show_threat", false);
+        _showThreat = _cfg.Get<bool>("show_threat", true);
 
         const float ThreatW = 260f;   // narrower than the Target HUD (name + a compact aggro bar + %)
         // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.

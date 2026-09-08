@@ -15,7 +15,7 @@ public sealed partial class Plugin
     private bool           _showMine    = true;       // config-backed: include effects the local player applied
     private bool           _showOthers  = true;       // config-backed: include effects a third party applied
     private bool           _showMonster = true;       // config-backed: include the target's own + unknown-source effects
-    private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
+    private bool           _showHidden  = true;       // config-backed: list + show internal/no-icon buffs (default ON)
     private bool           _hidePermanent = true;     // config-backed: drop permanent / no-timer effects (default ON)
 
     private void RegisterSettings()
@@ -175,15 +175,16 @@ public sealed partial class Plugin
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World });
     }
 
-    // Buff/debuff display style selector (0 = Classic tiles in the Target HUD, 1 = List window). Persists and takes
-    // effect LIVE: flip the List window's visibility straight away; the Target HUD's classic tile grid reacts on its
-    // own via a ConditionalElement on _buffStyle (see Plugin.TargetHud.cs), so switching updates both sides at once.
+    // Buff/debuff display style selector (0 = Classic tiles in the Target HUD, 1 = List window, 2 = Off = no display).
+    // Persists and takes effect LIVE: flip the List window's visibility straight away; the Target HUD's classic tile
+    // grid reacts on its own via a ConditionalElement on _buffStyle==0 (see Plugin.TargetHud.cs), so switching updates
+    // both sides at once. Off (2) hides both — the tile grid (==0 gate) and the List window (SetVisible only on ==1).
     private void SetBuffStyle(int style)
     {
         _buffStyle = style;
         _cfg.Set<int>("buff_style", style);
         _cfg.Save();
-        _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic → hide it
+        _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic/Off → hide it
     }
 
     // Master "Show hidden effects" toggle. Persists, flips the tracker's list source (full vs display-filtered),

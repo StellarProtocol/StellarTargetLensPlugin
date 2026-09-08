@@ -66,7 +66,7 @@ public sealed partial class Plugin : IStellarPlugin
         _targetBuff.ShowMine    = _showMine;
         _targetBuff.ShowOthers  = _showOthers;
         _targetBuff.ShowMonster = _showMonster;
-        _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
+        _showHidden            = _cfg.Get<bool>("show_hidden", true);    // default ON: show hidden buffs out of the box
         _targetBuff.ShowHidden = _showHidden;
         _hidePermanent            = _cfg.Get<bool>("hide_permanent", true);   // default ON: permanent/no-timer effects hidden
         _targetBuff.HidePermanent = _hidePermanent;
