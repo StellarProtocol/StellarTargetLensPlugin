@@ -24,10 +24,10 @@ public sealed partial class Plugin
         // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.
         const float ThreatH = 150f;
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1589, y=0). X is a fraction of
-        // ScreenWidth (0.6207*2560≈1589) so it holds across resolutions; y absolute. Own saved drag overrides.
-        float x = _services.Framework.ScreenWidth * 0.6207f;
-        float y = 0f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). X is a fraction of
+        // ScreenWidth (0.6704*2560≈1716) so it holds across resolutions; y absolute. Own saved drag overrides.
+        float x = _services.Framework.ScreenWidth * 0.6704f;
+        float y = 4f;
 
         _threatWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(

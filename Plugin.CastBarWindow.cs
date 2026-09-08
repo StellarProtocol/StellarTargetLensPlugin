@@ -40,10 +40,10 @@ public sealed partial class Plugin
         const float CastW = 340f;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
         const float CastH = 34f;    // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1248, y=117). X is a fraction of
-        // ScreenWidth (0.4875*2560≈1248) so it holds across resolutions; y absolute. Own saved drag overrides.
-        float x = _services.Framework.ScreenWidth * 0.4875f;
-        float y = 117f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=1377, y=120). X is a fraction of
+        // ScreenWidth (0.5378*2560≈1377) so it holds across resolutions; y absolute. Own saved drag overrides.
+        float x = _services.Framework.ScreenWidth * 0.5378f;
+        float y = 120f;
 
         _castBarWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
