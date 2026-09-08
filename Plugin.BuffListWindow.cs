@@ -39,7 +39,7 @@ public sealed partial class Plugin
         _buffListWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.bufflist",
-                Title:       "Target Effects",
+                Title:       _loc.T("tl.window.bufflist"),
                 DefaultRect: new WindowRect(x, y, ListW, defH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
@@ -73,7 +73,7 @@ public sealed partial class Plugin
     private HudElement BuildBuffListWindowRoot()
     {
         var rows = new HudElement[BuffListSlots + 1];
-        rows[0] = new TextElement(() => "Target Effects", Color: MutedColor, Emphasis: true, FontSize: 14);
+        rows[0] = new TextElement(() => _loc.T("tl.window.bufflist"), Color: MutedColor, Emphasis: true, FontSize: 14);
         for (int s = 0; s < BuffListSlots; s++)
         {
             int idx = s;

@@ -23,7 +23,7 @@ public sealed partial class Plugin
         _settingsWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.settings",
-                Title:       "Target Lens",
+                Title:       _loc.T("tl.settings.title"),
                 DefaultRect: new WindowRect(_services.Framework.ScreenWidth - 460f, 20f, 440f, 0f),
                 Category:    WindowCategory.Tools,
                 Style:       WindowPanelStyle.GlassMenu)
@@ -35,7 +35,7 @@ public sealed partial class Plugin
             {
                 // ── Target HUD ───────────────────────────────────────────────────
                 new SeparatorElement(),
-                new TextElement(() => "Target HUD", Emphasis: true),
+                new TextElement(() => _loc.T("tl.section.targetHud"), Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _targetHudOn, Set: v =>
@@ -45,14 +45,14 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("target_hud_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show Target HP HUD"),
+                    new TextElement(() => _loc.T("tl.toggle.showTargetHud")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
-                    new TextElement(() => "Buff / debuff display"),
+                    new TextElement(() => _loc.T("tl.label.buffDisplay")),
                     new DropdownElement(
                         Selected: () => _buffStyle,
-                        Options:  () => BuffStyleOptions,
+                        Options:  () => BuffStyleOptions(),
                         OnSelect: SetBuffStyle,
                         Width:    200f),
                 }, Gap: 6f),
@@ -65,12 +65,12 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("hide_permanent", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Hide permanent buffs/debuffs"),
+                    new TextElement(() => _loc.T("tl.toggle.hidePermanent")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
-                    new TextElement(() => "Show hidden buffs/debuffs"),
+                    new TextElement(() => _loc.T("tl.toggle.showHidden")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -81,7 +81,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_mine", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show buffs/debuffs I applied"),
+                    new TextElement(() => _loc.T("tl.toggle.showMine")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -92,7 +92,7 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_others", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show buffs/debuffs others applied"),
+                    new TextElement(() => _loc.T("tl.toggle.showOthers")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -103,17 +103,17 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_monster", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show monster's own + unknown-source buffs/debuffs"),
+                    new TextElement(() => _loc.T("tl.toggle.showMonster")),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
-                    new ButtonElement(() => "Select effects…", OnClick: () => _selectWindow.SetVisible(true)),
-                    new TextElement(() => "Choose which buffs/debuffs appear on the HUD"),
+                    new ButtonElement(() => _loc.T("tl.button.selectEffects"), OnClick: () => _selectWindow.SetVisible(true)),
+                    new TextElement(() => _loc.T("tl.desc.selectEffects")),
                 }, Gap: 6f),
 
                 // ── Threat / Aggro ───────────────────────────────────────────────
                 new SeparatorElement(),
-                new TextElement(() => "Threat / Aggro", Emphasis: true),
+                new TextElement(() => _loc.T("tl.section.threat"), Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _showThreat, Set: v =>
@@ -125,12 +125,12 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("show_threat", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show threat / aggro list"),
+                    new TextElement(() => _loc.T("tl.toggle.showThreat")),
                 }, Gap: 6f),
 
                 // ── Cast Bar ─────────────────────────────────────────────────────
                 new SeparatorElement(),
-                new TextElement(() => "Cast Bar", Emphasis: true),
+                new TextElement(() => _loc.T("tl.section.castBar"), Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _castBarOn, Set: v =>
@@ -142,12 +142,12 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("cast_bar_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show cast bar"),
+                    new TextElement(() => _loc.T("tl.toggle.showCastBar")),
                 }, Gap: 6f),
 
                 // ── Boss Skill Timers ────────────────────────────────────────────
                 new SeparatorElement(),
-                new TextElement(() => "Boss Skill Timers", Emphasis: true),
+                new TextElement(() => _loc.T("tl.section.bossTimers"), Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
@@ -159,14 +159,14 @@ public sealed partial class Plugin
                         _cfg.Set<bool>("boss_timer_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Show boss skill timers"),
+                    new TextElement(() => _loc.T("tl.toggle.showBossTimers")),
                 }, Gap: 6f),
             }, Gap: 8f),
             OnClose: () => _settingsWindow.SetVisible(false)));
         _windows.Add(_settingsWindow);   // Dispose already loops _windows and Remove()s each
 
         _launcherEntry = _services.Launcher.Register(new LauncherEntry(
-            Title:   "Target Lens",
+            Title:   _loc.T("tl.settings.title"),
             IconPng: LoadIconPng(),
             IconKey: null,
             OnOpen:  () => _settingsWindow.SetVisible(true))

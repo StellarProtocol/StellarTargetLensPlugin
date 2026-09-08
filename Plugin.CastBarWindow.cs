@@ -48,7 +48,7 @@ public sealed partial class Plugin
         _castBarWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.castbar",
-                Title:       "Cast Bar",
+                Title:       _loc.T("tl.window.castbar"),
                 DefaultRect: new WindowRect(x, y, CastW, CastH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
@@ -136,7 +136,7 @@ public sealed partial class Plugin
     private string CastNameLine()
     {
         var n = CastCur().SkillName;
-        if (string.IsNullOrEmpty(n)) return "Casting…";
+        if (string.IsNullOrEmpty(n)) return _loc.T("tl.cast.casting");
         return Truncate(StripTags(n), CastNameBudget);
     }
 

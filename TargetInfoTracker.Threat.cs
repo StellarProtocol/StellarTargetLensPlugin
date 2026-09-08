@@ -163,7 +163,7 @@ internal sealed partial class TargetInfoTracker
         }
 
         // 5. Last resort — the roleId, so a row always carries a label.
-        return "Player " + (uuid >> 16);
+        return _services.Localization.TFormat("tl.threat.playerFallback", uuid >> 16);
     }
 
     // PartyRoster.Members match by CharId (uuid>>16) → member display name. Guarded: the service may be absent on

@@ -85,7 +85,7 @@ public sealed partial class Plugin
         _targetHudWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.hud",
-                Title:       "Target HUD",
+                Title:       _loc.T("tl.window.hud"),
                 DefaultRect: new WindowRect(x, y, HudDefaultW, HudH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
@@ -157,7 +157,7 @@ public sealed partial class Plugin
                 }),
             // Break/recovery bar: amber, local fill tween + seconds-remaining countdown.
             new ConditionalElement(() => TargetHudHasBreak() && TargetHudBroken(),
-                new BarElement(() => TargetHudBreakFraction(), BreakRecoverColor, () => "BREAK")
+                new BarElement(() => TargetHudBreakFraction(), BreakRecoverColor, () => _loc.T("tl.hud.break"))
                 {
                     Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 14,
                     SecondaryLabel = () => TargetHudBreakRemainLabel(),
@@ -249,8 +249,8 @@ public sealed partial class Plugin
     private string TargetHudNameLine()
     {
         var s = Cur;
-        if (!s.HasTarget) return "(unknown)";
-        return string.IsNullOrEmpty(s.Name) ? "(unknown)" : s.Name;
+        if (!s.HasTarget) return _loc.T("tl.hud.unknown");
+        return string.IsNullOrEmpty(s.Name) ? _loc.T("tl.hud.unknown") : s.Name;
     }
 
     // Rank tag: bold + coloured (Boss = gold, Elite = orange); shown only for Boss/Elite, never Normal.
@@ -263,8 +263,16 @@ public sealed partial class Plugin
         return s.HasTarget && !string.IsNullOrEmpty(s.Rank) && s.Rank != "Normal";
     }
 
+    // Rank is game data ("Boss"/"Elite"/"Normal") kept as-is for the logic compares above; only the DISPLAYED
+    // tag is localized. Any other rank value falls back to the uppercased raw string.
     private string TargetHudRankText()
-        => TargetHudHasRank() ? Cur.Rank.ToUpperInvariant() : "";
+    {
+        if (!TargetHudHasRank()) return "";
+        var rank = Cur.Rank;
+        if (rank == "Boss")  return _loc.T("tl.rank.boss");
+        if (rank == "Elite") return _loc.T("tl.rank.elite");
+        return rank.ToUpperInvariant();
+    }
 
     private ColorRgba? TargetHudRankColor()
     {

@@ -46,7 +46,7 @@ public sealed partial class Plugin
         _bossTimerWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.bosstimer",
-                Title:       "Boss Skill Timers",
+                Title:       _loc.T("tl.window.bosstimer"),
                 DefaultRect: new WindowRect(x, y, TimerW, timerH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
@@ -77,7 +77,7 @@ public sealed partial class Plugin
     private HudElement BuildBossTimerWindowRoot()
     {
         var rows = new HudElement[BossTimerSlots + 1];
-        rows[0] = new TextElement(() => "Boss Skill Timers", Color: MutedColor, Emphasis: true, FontSize: 14);
+        rows[0] = new TextElement(() => _loc.T("tl.window.bosstimer"), Color: MutedColor, Emphasis: true, FontSize: 14);
         for (int s = 0; s < BossTimerSlots; s++)
         {
             int idx = s;

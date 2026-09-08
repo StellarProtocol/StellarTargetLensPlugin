@@ -16,6 +16,7 @@ public sealed partial class Plugin : IStellarPlugin
     public string Name => "Target Lens";
 
     private readonly IPluginServices      _services;
+    private readonly ILocalization        _loc;      // i18n: consumes IPluginServices.Localization (Lang/*.json catalog)
     private readonly IConfigSection       _cfg;
     private readonly List<IWindowControl> _windows = new();
 
@@ -29,6 +30,7 @@ public sealed partial class Plugin : IStellarPlugin
     public Plugin(IPluginServices services)
     {
         _services = services;
+        _loc = services.Localization;   // framework auto-loads the embedded Stellar.TargetLens.Lang.<locale>.json catalog
         _cfg = _services.Config.GetSection("settings");
 
         // Buff name/type/source-skill resolution used by the target buff tracker (own Harmony host, auto-unpatched).

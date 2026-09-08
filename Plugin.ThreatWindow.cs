@@ -32,7 +32,7 @@ public sealed partial class Plugin
         _threatWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.threat",
-                Title:       "Threat / Aggro",
+                Title:       _loc.T("tl.window.threat"),
                 DefaultRect: new WindowRect(x, y, ThreatW, ThreatH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
@@ -61,7 +61,7 @@ public sealed partial class Plugin
     private HudElement BuildThreatWindowRoot()
     {
         var rows = new HudElement[ThreatSlots + 1];
-        rows[0] = new TextElement(() => "Threat / Aggro", Color: MutedColor, Emphasis: true, FontSize: 14);
+        rows[0] = new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: 14);
         for (int s = 0; s < ThreatSlots; s++)
         {
             int idx = s;

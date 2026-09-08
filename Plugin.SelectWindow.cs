@@ -10,7 +10,9 @@ namespace Stellar.TargetLens;
 // wrapper (Target Lens has no per-row tooltip in this window — rows are plain icon + name + toggle).
 public sealed partial class Plugin
 {
-    private static readonly string[] ModeOptions = { "Show only selected", "Show all, exclude selected" };
+    // Built fresh from the loc catalog each call so the labels follow the active language (the dropdown's Options
+    // provider re-invokes it). Order MUST match the TrackMode enum ints (0 = only selected, 1 = exclude selected).
+    private string[] ModeOptions() => new[] { _loc.T("tl.mode.onlySelected"), _loc.T("tl.mode.excludeSelected") };
 
     // Loaded/assigned in the ctor (see Plugin.cs): the dedicated "select" config section + the persisted selection.
     private IConfigSection        _selCfg    = null!;
@@ -25,7 +27,7 @@ public sealed partial class Plugin
         _selectWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.select",
-                Title:       "Target Lens — Effects",
+                Title:       _loc.T("tl.window.select"),
                 DefaultRect: new WindowRect(900f, 120f, 360f, 520f),
                 Category:    WindowCategory.Tools,
                 Style:       WindowPanelStyle.GlassMenu)
@@ -43,12 +45,12 @@ public sealed partial class Plugin
         var tabStrip = new RowElement(new HudElement[]
         {
             new CellElement(
-                new ButtonElement(() => "Debuffs",
+                new ButtonElement(() => _loc.T("tl.select.tab.debuffs"),
                     OnClick: () => { _activeTab = 0; EnsureBuffTabLoaded(); ApplyDebuffTabFilter(_dtFilter); _dtScrollReset = true; },
                     Active: () => _activeTab == 0),
                 Weight: 1f),
             new CellElement(
-                new ButtonElement(() => "Buffs",
+                new ButtonElement(() => _loc.T("tl.select.tab.buffs"),
                     OnClick: () => { _activeTab = 1; EnsureBuffTabLoaded(); ApplyBuffTabFilter(_btFilter); _btScrollReset = true; },
                     Active: () => _activeTab == 1),
                 Weight: 1f),
@@ -56,11 +58,11 @@ public sealed partial class Plugin
 
         var modeRow = new RowElement(new HudElement[]
         {
-            new TextElement(() => "Filter mode"),
+            new TextElement(() => _loc.T("tl.select.filterMode")),
             new SpacerElement(Width: 0f),
             new DropdownElement(
                 Selected: () => (int)ActiveTabMode(),
-                Options:  () => ModeOptions,
+                Options:  () => ModeOptions(),
                 OnSelect: v => SetActiveTabMode((TrackMode)v),
                 Width: 210f),
         }, Gap: 6f);
@@ -68,7 +70,7 @@ public sealed partial class Plugin
         return new ColumnElement(new HudElement[]
         {
             new SeparatorElement(),
-            new TextElement(() => "Choose which effects appear on the Target HUD", Emphasis: true),
+            new TextElement(() => _loc.T("tl.select.heading"), Emphasis: true),
             tabStrip,
             modeRow,
             new SeparatorElement(),
@@ -111,7 +113,7 @@ public sealed partial class Plugin
             new InputElement(
                 Get: () => _dtFilter, Submit: ApplyDebuffTabFilter,
                 Width: 340f, OnChange: ApplyDebuffTabFilter),
-            new TextElement(() => $"{_dtFiltCount} / {_dtCount} debuffs"),
+            new TextElement(() => _loc.TFormat("tl.count.debuffs", _dtFiltCount, _dtCount)),
             new VirtualListElement(
                 Count:    () => { EnsureBuffTabLoaded(); return _dtFiltCount; },
                 RowHeight: 32f, Pool: pool,
@@ -143,7 +145,7 @@ public sealed partial class Plugin
             new InputElement(
                 Get: () => _btFilter, Submit: ApplyBuffTabFilter,
                 Width: 340f, OnChange: ApplyBuffTabFilter),
-            new TextElement(() => $"{_btFiltCount} / {_btCount} buffs"),
+            new TextElement(() => _loc.TFormat("tl.count.buffs", _btFiltCount, _btCount)),
             new VirtualListElement(
                 Count:    () => { EnsureBuffTabLoaded(); return _btFiltCount; },
                 RowHeight: 32f, Pool: pool,
@@ -167,7 +169,7 @@ public sealed partial class Plugin
         if (i >= _dtFiltCount) return "";
         int n = _dtFiltMembers[i].Length;
         // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
-        return n > 1 ? _dtFiltNames[i] + "  ×" + n : _dtFiltNames[i];
+        return n > 1 ? _dtFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _dtFiltNames[i];
     }
 
     private bool DtTracked(int idx)
@@ -201,7 +203,7 @@ public sealed partial class Plugin
         if (i >= _btFiltCount) return "";
         int n = _btFiltMembers[i].Length;
         // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
-        return n > 1 ? _btFiltNames[i] + "  ×" + n : _btFiltNames[i];
+        return n > 1 ? _btFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _btFiltNames[i];
     }
 
     private bool BtTracked(int idx)
