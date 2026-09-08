@@ -164,20 +164,25 @@ public sealed partial class Plugin
     private string DtLabel(int idx)
     {
         int i = _dtOffset + idx;
-        return i < _dtFiltCount ? _dtFiltNames[i] : "";
+        if (i >= _dtFiltCount) return "";
+        int n = _dtFiltMembers[i].Length;
+        // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
+        return n > 1 ? _dtFiltNames[i] + "  ×" + n : _dtFiltNames[i];
     }
 
     private bool DtTracked(int idx)
     {
         int i = _dtOffset + idx;
-        return i < _dtFiltCount && _selection.IsDebuffTracked(_dtFiltIds[i]);
+        // ON only when every member id is tracked (partial → OFF, so one tap selects the whole group).
+        return i < _dtFiltCount && GroupAllTracked(_dtFiltMembers[i], _selection.IsDebuffTracked);
     }
 
     private void SetDtTracked(int idx, bool on)
     {
         int i = _dtOffset + idx;
         if (i >= _dtFiltCount) return;
-        _selection.SetDebuff(_dtFiltIds[i], on);
+        // Selection stays per-id: write every member id, so the per-id HUD display path is unchanged.
+        foreach (int id in _dtFiltMembers[i]) _selection.SetDebuff(id, on);
         _selection.Save(_selCfg);
     }
 
@@ -193,20 +198,25 @@ public sealed partial class Plugin
     private string BtLabel(int idx)
     {
         int i = _btOffset + idx;
-        return i < _btFiltCount ? _btFiltNames[i] : "";
+        if (i >= _btFiltCount) return "";
+        int n = _btFiltMembers[i].Length;
+        // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
+        return n > 1 ? _btFiltNames[i] + "  ×" + n : _btFiltNames[i];
     }
 
     private bool BtTracked(int idx)
     {
         int i = _btOffset + idx;
-        return i < _btFiltCount && _selection.IsBuffTracked(_btFiltIds[i]);
+        // ON only when every member id is tracked (partial → OFF, so one tap selects the whole group).
+        return i < _btFiltCount && GroupAllTracked(_btFiltMembers[i], _selection.IsBuffTracked);
     }
 
     private void SetBtTracked(int idx, bool on)
     {
         int i = _btOffset + idx;
         if (i >= _btFiltCount) return;
-        _selection.SetBuff(_btFiltIds[i], on);
+        // Selection stays per-id: write every member id, so the per-id HUD display path is unchanged.
+        foreach (int id in _btFiltMembers[i]) _selection.SetBuff(id, on);
         _selection.Save(_selCfg);
     }
 }
