@@ -7,53 +7,82 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 /// <summary>
-/// Harmony capture of the game's general cast/channel ("吟唱/读条") begin/end, feeding
-/// <see cref="TargetInfoTracker"/>'s cast-bar read. This REPLACES the old approach of scraping the boss HP-frame
-/// widget <c>Panda.ZUi.ZUIBossBlood</c>, which only exists for bona-fide bosses — so normal/elite mobs that channel
-/// showed no bar, and the read had to guess the fill direction off an image's <c>fillAmount</c>.
+/// Harmony capture of the game's general cast/channel ("吟唱/读条") progress, feeding <see cref="TargetInfoTracker"/>'s
+/// cast-bar read. This REPLACES both the old boss HP-frame widget scrape (<c>Panda.ZUi.ZUIBossBlood</c>, bosses only)
+/// AND the earlier <c>ZStateSkillComp.beginSingGuide()</c> begin/end hook — that method is AOT-inlined in this build, so
+/// its standalone body never runs and the patch captured nothing (<c>[CastDiag] activeCasters=0 patched=True</c>).
 ///
-/// <para>Instead we patch the PRODUCER on every non-local combat entity's state machine:
-/// <c>Panda.ZGame.ZStateSkillComp.beginSingGuide()</c> and <c>endSingGuide()</c> (both take NO parameters → no
-/// in/ref-struct → no trampoline-NullRef risk; real non-inlined bodies). The begin postfix reads the cast payload
-/// straight off <c>__instance</c> (<c>curSkillId_</c>, <c>skillRow_.Name</c>, <c>curSkillSpeedRate_</c>,
-/// total via <c>SingGuideSystem.GetTotalSingDuration</c>) and the caster uuid by base-walking
-/// <c>ZStateSkillComp : ZStateComponent : ZComponent</c> to <c>ZComponent.Host</c>→<c>ZEntity.Uuid</c> — the same
-/// Host→Uuid walk <see cref="BuffTrackPatch"/> uses. It upserts a latch keyed by caster uuid; the end postfix removes
-/// that caster's entry, so an interrupt clears the bar PROMPTLY (no widget-tick to drain).</para>
+/// <para>PRIMARY PRODUCER: <c>Panda.ZGame.EntityExtensions.SetSingGuide(ZEntity entity, float value, float maxValue,
+/// bool forward, ESingGuideType type)</c> — a static extension the game calls EVERY FRAME during a cast to drive the
+/// bar (verified non-inlined + patchable: <c>dump.cs:206212</c>, <c>script.json:236201</c>, RVA 0x5180E20, all params
+/// by value/pointer → no in/ref-struct → no trampoline-NullRef risk). The postfix reads the bar payload straight off
+/// the args: caster uuid = <c>entity.Uuid</c> (the first arg IS the ZEntity), plus <c>value</c>/<c>maxValue</c>/
+/// <c>forward</c>/<c>type</c>. It upserts a latch keyed by caster uuid; because there is NO explicit end call, an entry
+/// is EXPIRED when it goes un-updated for ~0.3s (see <see cref="StaleMs"/>) — an interrupt therefore clears the bar
+/// within a few frames.</para>
 ///
-/// <para>Threading: both postfixes run on the game/main thread, and the tracker reads the latch on that same thread
-/// during window render (one poll per frame) — mirroring <see cref="BuffTrackPatch"/>/<see cref="DbmPatch"/>, so a
-/// plain dictionary swap is safe, no lock. A version counter lets the tracker tell a fresh event from a repeat read.
-/// The postfixes MUST NEVER THROW (a throw in a game-thread postfix is dangerous) → everything is guarded.</para>
+/// <para>ENRICHMENT (best-effort): a postfix on <c>ZStateSkillComp.beginSingGuide()</c> is KEPT purely to fill in
+/// <c>SkillId</c>/<c>Name</c> for the caster's latch entry (read off <c>curSkillId_</c>/<c>skillRow_.Name</c>). If it
+/// is inlined it simply never fires and the bar shows a generic "Casting…" — the bar itself never depends on it. When
+/// it does fire we DON'T clobber the count-up values, only the label fields.</para>
+///
+/// <para>Threading: postfixes run on the game/main thread, and the tracker reads the latch on that same thread during
+/// window render (one poll per frame) — mirroring <see cref="BuffTrackPatch"/>/<see cref="DbmPatch"/>, so a plain
+/// dictionary swap is safe, no lock. A version counter lets the tracker tell a fresh event from a repeat read. The
+/// postfixes MUST NEVER THROW (a throw in a game-thread postfix is dangerous) → everything is guarded.</para>
 /// </summary>
 internal static class CastPatch
 {
-    /// <summary>One caster's in-flight cast, latched at begin and dropped at end.</summary>
+    /// <summary>One caster's in-flight cast, latched/updated on every <c>SetSingGuide</c> tick.</summary>
     public struct CastEntry
     {
-        public int    SkillId;
-        public string Name;
-        public float  TotalSec;   // wall-clock cast seconds (game total ÷ speed-rate)
-        public long   SnapTick;   // Environment.TickCount64 at begin — the count-up anchor
-        public bool   Danger;     // MonsterDanger cast → red accent (default false; see note in OnBeginSing)
+        public long   Uuid;
+        public float  Value;       // raw bar value from SetSingGuide (meaning depends on Forward)
+        public float  MaxValue;    // raw bar max from SetSingGuide (may be a value or seconds — used as denominator only)
+        public bool   Forward;     // true → count UP (value/max); false → count DOWN (1 − value/max)
+        public bool   Danger;      // ESingGuideType.MonsterDanger (type==2) → red accent
+        public long   LastTickMs;  // Environment.TickCount64 at the last update — drives the staleness expire
+        public int    SkillId;     // enrichment (beginSingGuide) — drives the overlay icon; 0 when unknown
+        public string Name;        // enrichment (beginSingGuide) — skill name; "" when unknown ("Casting…" shown)
     }
 
-    // Latch keyed by caster uuid. Written by the begin/end postfixes, read by the tracker — all on the main thread,
-    // so no lock (matches BuffTrackPatch._activeBuffs / DbmPatch._ids).
-    private static readonly Dictionary<long, CastEntry> _casts = new();
-    private static int _version;   // bumped on every begin/end so the tracker can gate a fresh event
+    /// <summary>An entry un-updated for longer than this is treated as ended (SetSingGuide stops ticking on end/interrupt).</summary>
+    internal const long StaleMs = 300;
 
-    /// <summary>True once both postfixes are installed (surfaced in [CastDiag] so we can confirm they fired).</summary>
+    // Latch keyed by caster uuid. Written by the postfixes, read by the tracker — all on the main thread, so no lock
+    // (matches BuffTrackPatch._activeBuffs / DbmPatch._ids).
+    private static readonly Dictionary<long, CastEntry> _casts = new();
+    private static int _version;   // bumped on every update so the tracker can gate a fresh event
+
+    /// <summary>True once the SetSingGuide postfix is installed (surfaced in [CastDiag] so we can confirm it fired).</summary>
     public static bool Installed { get; private set; }
 
-    /// <summary>Opt-in begin/end event logging (wired from the plugin's "Cast-bar diagnostic" toggle).</summary>
+    /// <summary>Opt-in event logging (wired from the plugin's "Cast-bar diagnostic" toggle).</summary>
     public static bool Diag;
 
-    /// <summary>Number of casters currently mid-cast (for the diagnostic census).</summary>
+    /// <summary>Number of casters currently latched (for the diagnostic census).</summary>
     public static int ActiveCount => _casts.Count;
 
-    /// <summary>Latch lookup for the current target. Returns the in-flight cast for <paramref name="casterUuid"/>.</summary>
-    public static bool TryGet(long casterUuid, out CastEntry entry) => _casts.TryGetValue(casterUuid, out entry);
+    /// <summary>
+    /// Latch lookup for the current target. Returns the live cast for <paramref name="casterUuid"/>, pruning it if it
+    /// has gone stale (no <c>SetSingGuide</c> tick for <see cref="StaleMs"/>) — the normal end/interrupt path.
+    /// </summary>
+    public static bool TryGet(long casterUuid, out CastEntry entry)
+    {
+        if (_casts.TryGetValue(casterUuid, out entry))
+        {
+            if (Environment.TickCount64 - entry.LastTickMs > StaleMs)
+            {
+                _casts.Remove(casterUuid);
+                _version++;
+                entry = default;
+                return false;
+            }
+            return true;
+        }
+        entry = default;
+        return false;
+    }
 
     private static Action<string>? _log;
 
@@ -61,26 +90,37 @@ internal static class CastPatch
     {
         _log = log;
 
-        var t = StellarInterop.FindType("Panda.ZGame.ZStateSkillComp");
-        if (t == null) { log("[Cast] ZStateSkillComp not found — cast capture skipped"); return false; }
+        // PRIMARY: EntityExtensions.SetSingGuide — the per-frame producer that carries the real bar values.
+        var ext = StellarInterop.FindType("Panda.ZGame.EntityExtensions");
+        if (ext == null) { log("[Cast] EntityExtensions not found — cast capture skipped"); return false; }
 
-        var begin = ResolveMethod0(t, "beginSingGuide");
-        var end   = ResolveMethod0(t, "endSingGuide");
-        if (begin == null || end == null)
-        {
-            log($"[Cast] hooks missing begin={begin != null} end={end != null} — cast capture skipped");
-            return false;
-        }
+        var set = ResolveSetSingGuide(ext);
+        if (set == null) { log("[Cast] SetSingGuide not found — cast capture skipped"); return false; }
 
         try
         {
-            harmony.Patch(begin, postfix: new HarmonyMethod(typeof(CastPatch), nameof(OnBeginSing)));
-            harmony.Patch(end,   postfix: new HarmonyMethod(typeof(CastPatch), nameof(OnEndSing)));
+            harmony.Patch(set, postfix: new HarmonyMethod(typeof(CastPatch), nameof(OnSetSingGuide)));
             Installed = true;
-            log("[Cast] beginSingGuide/endSingGuide postfixes patched");
-            return true;
+            log("[Cast] SetSingGuide postfix patched (primary cast producer)");
         }
-        catch (Exception ex) { log($"[Cast] patch failed: {ex.Message}"); return false; }
+        catch (Exception ex) { log($"[Cast] SetSingGuide patch failed: {ex.Message}"); return false; }
+
+        // ENRICHMENT (optional): beginSingGuide for skill id/name. Inlined in this build → likely never fires; kept so
+        // the label/icon light up automatically if a future build stops inlining it. A miss here is non-fatal.
+        try
+        {
+            var sk = StellarInterop.FindType("Panda.ZGame.ZStateSkillComp");
+            var begin = sk == null ? null : ResolveMethod0(sk, "beginSingGuide");
+            if (begin != null)
+            {
+                harmony.Patch(begin, postfix: new HarmonyMethod(typeof(CastPatch), nameof(OnBeginSing)));
+                log("[Cast] beginSingGuide enrichment postfix patched");
+            }
+            else log("[Cast] beginSingGuide not resolvable — enrichment skipped (bar shows 'Casting…')");
+        }
+        catch (Exception ex) { log($"[Cast] beginSingGuide enrichment skipped: {ex.Message}"); }
+
+        return true;
     }
 
     // Harmony teardown is owned by IHarmonyHost (auto-unpatch on dispose); reset only transient state here.
@@ -88,17 +128,59 @@ internal static class CastPatch
     {
         _casts.Clear();
         _version = 0;
+        _entUuidResolved = false; _piEntUuid = null;
         _reflResolved = false;
-        _mCurSkillId = _mSpeedRate = _mSkillRow = _mSkillName = null;
+        _mCurSkillId = _mSkillRow = _mSkillName = null;
         _skillRowType = null;
         _piHost = _piUuid = null; _hostResolved = false;
-        _singSysResolved = false; _singSysType = null; _miGetTotal = null;
         _loggedError = false;
+        _firstSetLogged = _firstBeginLogged = false;
     }
 
-    // ── Begin postfix ────────────────────────────────────────────────────────────────────────────────────────
-    // curSkillId_ / skillRow_.Name / curSkillSpeedRate_ off __instance; total via SingGuideSystem.GetTotalSingDuration
-    // (÷ speed for the real wall-clock duration under haste); caster uuid via the Host→Uuid base-walk. Fully guarded.
+    // ── PRIMARY postfix: SetSingGuide(entity, value, maxValue, forward, type) ────────────────────────────────────
+    // Static extension → no __instance. Positional injection: __0 = ZEntity, __1 = value, __2 = maxValue,
+    // __3 = forward, __4 = type (ESingGuideType, byte-backed). entity IS the ZEntity → read .Uuid directly. Fully
+    // guarded; the count-up fill is the game's own bar value, so no local tick anchor is needed.
+    private static void OnSetSingGuide(object __0, float __1, float __2, bool __3, object __4)
+    {
+        try
+        {
+            if (__0 == null) return;
+
+            long uuid = ReadEntityUuid(__0);
+
+            if (!_firstSetLogged)
+            {
+                _firstSetLogged = true;
+                _log?.Invoke($"[Cast] SetSingGuide FIRED uuid={uuid} val={__1:F2}/{__2:F2} fwd={__3} type={ToInt(__4)}");
+            }
+            if (uuid == 0) return;
+
+            bool danger = ToInt(__4) == 2;   // ESingGuideType.MonsterDanger
+
+            // Preserve any enrichment (SkillId/Name) already on the entry — SetSingGuide carries neither.
+            _casts.TryGetValue(uuid, out var prev);
+            _casts[uuid] = new CastEntry
+            {
+                Uuid       = uuid,
+                Value      = __1,
+                MaxValue   = __2,
+                Forward    = __3,
+                Danger     = danger,
+                LastTickMs = Environment.TickCount64,
+                SkillId    = prev.SkillId,
+                Name       = prev.Name ?? "",
+            };
+            _version++;
+
+            if (Diag)
+                _log?.Invoke($"[CastDiag] set uuid={uuid} val={__1:F2}/{__2:F2} fwd={__3} danger={danger} " +
+                             $"active={_casts.Count}");
+        }
+        catch (Exception ex) { LogError("set", ex); }
+    }
+
+    // ── ENRICHMENT postfix: beginSingGuide() — fill SkillId/Name only, never touch the count-up values. ──────────
     private static void OnBeginSing(object __instance)
     {
         try
@@ -107,60 +189,60 @@ internal static class CastPatch
             EnsureRefl(__instance.GetType());
 
             long uuid = GetHostUuid(__instance);
-            if (uuid == 0) return;   // no caster identity → can't key the latch; nothing we can show
+
+            if (!_firstBeginLogged)
+            {
+                _firstBeginLogged = true;
+                _log?.Invoke($"[Cast] beginSingGuide FIRED uuid={uuid} skillId={ReadInt(_mCurSkillId, __instance)}");
+            }
+            if (uuid == 0) return;
 
             int    skillId = ReadInt(_mCurSkillId, __instance);
-            float  speed   = ReadFloat(_mSpeedRate, __instance);
             string name    = ReadSkillName(__instance);
 
-            float total = ResolveTotal(skillId, __instance);
-            // curSkillSpeedRate_ is the cast-speed factor (haste): the game total is at 1.0x, so the real wall-clock
-            // duration is total ÷ speed. Guard a zero/negative rate (treat as 1.0x) to avoid a divide blow-up.
-            if (speed > 0f) total /= speed;
-
-            // ESingGuideType (Normal/MonsterNormal/MonsterDanger/SteelBar) is NOT a field on ZStateSkillComp — it
-            // lives on the ECS SingGuideComponent, which is awkward to reach from here. Per the plan we DON'T block
-            // the feature on it: default to a non-danger forward (count-up) bar and log begin/end so we can confirm
-            // the hook fires for non-boss casters. If danger styling is wanted later, patch EntityExtensions
-            // .SetSingGuide(entity, value, maxValue, forward, type) instead — it carries the type explicitly.
-            bool danger = false;
-
-            _casts[uuid] = new CastEntry
+            // Update-or-create: if SetSingGuide already latched this caster, enrich in place; otherwise seed a fresh
+            // (non-stale) entry so the label survives until the first SetSingGuide tick populates the bar values.
+            if (_casts.TryGetValue(uuid, out var e))
             {
-                SkillId  = skillId,
-                Name     = name,
-                TotalSec = total,
-                SnapTick = Environment.TickCount64,
-                Danger   = danger,
-            };
+                e.SkillId = skillId; e.Name = name;
+                _casts[uuid] = e;
+            }
+            else
+            {
+                _casts[uuid] = new CastEntry
+                {
+                    Uuid = uuid, SkillId = skillId, Name = name,
+                    Forward = true, MaxValue = 0f, Value = 0f, Danger = false,
+                    LastTickMs = Environment.TickCount64,
+                };
+            }
             _version++;
 
             if (Diag)
-                _log?.Invoke($"[CastDiag] begin uuid={uuid} skillId={skillId} name='{name}' total={total:F2} " +
-                             $"speed={speed:F2} danger={danger} active={_casts.Count}");
+                _log?.Invoke($"[CastDiag] begin(enrich) uuid={uuid} skillId={skillId} name='{name}' active={_casts.Count}");
         }
         catch (Exception ex) { LogError("begin", ex); }
     }
 
-    // ── End postfix ──────────────────────────────────────────────────────────────────────────────────────────
-    // Remove this caster from the latch → the bar hides the moment a cast finishes OR is interrupted. Guarded.
-    private static void OnEndSing(object __instance)
+    // ── Caster uuid off the ZEntity arg (SetSingGuide's first arg IS the entity). ────────────────────────────────
+    private static PropertyInfo? _piEntUuid;
+    private static bool          _entUuidResolved;
+
+    private static long ReadEntityUuid(object entity)
     {
-        try
+        if (!_entUuidResolved)
         {
-            if (__instance == null) return;
-            long uuid = GetHostUuid(__instance);
-            if (uuid == 0) return;
-            if (_casts.Remove(uuid)) _version++;
-            if (Diag) _log?.Invoke($"[CastDiag] end uuid={uuid} active={_casts.Count}");
+            _entUuidResolved = true;
+            _piEntUuid = entity.GetType().GetProperty("Uuid", BindingFlags.Public | BindingFlags.Instance);
+            _log?.Invoke($"[Cast] entUuid resolved={_piEntUuid != null}");
         }
-        catch (Exception ex) { LogError("end", ex); }
+        if (_piEntUuid == null) return 0L;
+        try { return Convert.ToInt64(_piEntUuid.GetValue(entity) ?? 0L); } catch { return 0L; }
     }
 
-    // ── Reflection (resolved once off the first ZStateSkillComp instance type) ───────────────────────────────
+    // ── Enrichment reflection (resolved once off the first ZStateSkillComp instance type) ────────────────────────
     private static bool        _reflResolved;
     private static MemberInfo? _mCurSkillId;   // curSkillId_ (int)
-    private static MemberInfo? _mSpeedRate;    // curSkillSpeedRate_ (float)
     private static MemberInfo? _mSkillRow;     // skillRow_ (SkillTableBase)
     private static Type?       _skillRowType;  // last-seen runtime type of skillRow_ (lazy re-resolve on change)
     private static MemberInfo? _mSkillName;    // SkillTableBase.Name (string)
@@ -170,9 +252,8 @@ internal static class CastPatch
         if (_reflResolved) return;
         _reflResolved = true;
         _mCurSkillId = FindMember(t, "curSkillId_");
-        _mSpeedRate  = FindMember(t, "curSkillSpeedRate_");
         _mSkillRow   = FindMember(t, "skillRow_");
-        _log?.Invoke($"[Cast] refl skillId={_mCurSkillId != null} speed={_mSpeedRate != null} row={_mSkillRow != null}");
+        _log?.Invoke($"[Cast] refl skillId={_mCurSkillId != null} row={_mSkillRow != null}");
     }
 
     private static string ReadSkillName(object inst)
@@ -184,7 +265,7 @@ internal static class CastPatch
         return ReadMember(_mSkillName, row) as string ?? "";
     }
 
-    // ── Caster uuid: base-walk ZStateSkillComp → ZComponent.Host (internal ZEntity) → ZEntity.Uuid (long).
+    // ── Caster uuid for the enrichment hook: base-walk ZStateSkillComp → ZComponent.Host (ZEntity) → ZEntity.Uuid.
     //    Mirrors BuffTrackPatch.ResolveHostRefl/GetHostEntityUuid. ─────────────────────────────────────────────
     private static PropertyInfo? _piHost;
     private static PropertyInfo? _piUuid;
@@ -215,66 +296,21 @@ internal static class CastPatch
         catch { return 0L; }
     }
 
-    // ── Total cast seconds: SingGuideSystem.GetTotalSingDuration(skillId) (static float), else skillRow_
-    //    .SingOrGuideTime[1][1] (NumberTable → total sing seconds). Guarded → 0 on total miss (bar shows name only).
-    private static bool        _singSysResolved;
-    private static Type?       _singSysType;
-    private static MethodInfo? _miGetTotal;
-
-    private static float ResolveTotal(int skillId, object inst)
-    {
-        if (!_singSysResolved)
-        {
-            _singSysResolved = true;
-            _singSysType = StellarInterop.FindType("Panda.ZGame.SingGuideSystem");
-            if (_singSysType != null)
-                _miGetTotal = _singSysType.GetMethod("GetTotalSingDuration",
-                    BindingFlags.Public | BindingFlags.Static);
-            _log?.Invoke($"[Cast] singSys type={_singSysType != null} getTotal={_miGetTotal != null}");
-        }
-        if (_miGetTotal != null)
-        {
-            try
-            {
-                var v = _miGetTotal.Invoke(null, new object[] { skillId });
-                float f = v == null ? 0f : Convert.ToSingle(v);
-                if (f > 0f) return f;
-            }
-            catch { }
-        }
-        // Fallback: skillRow_.SingOrGuideTime as a NumberTable, row [1] column [1] = total sing seconds.
-        try
-        {
-            var row = ReadMember(_mSkillRow, inst);
-            if (row != null)
-            {
-                var sog = row.GetType().GetProperty("SingOrGuideTime", BindingFlags.Public | BindingFlags.Instance)?.GetValue(row);
-                float f = ReadNumberTable(sog, 1, 1);
-                if (f > 0f) return f;
-            }
-        }
-        catch { }
-        return 0f;
-    }
-
-    // NumberTable : TwoDArray<NumberArray,float> — get_Item(row) → NumberArray, get_Item(col) → float. All guarded.
-    private static float ReadNumberTable(object? table, int row, int col)
-    {
-        try
-        {
-            if (table == null) return 0f;
-            var rowObj = table.GetType().GetMethod("get_Item", new[] { typeof(int) })?.Invoke(table, new object[] { row });
-            if (rowObj == null) return 0f;
-            var val = rowObj.GetType().GetMethod("get_Item", new[] { typeof(int) })?.Invoke(rowObj, new object[] { col });
-            return val == null ? 0f : Convert.ToSingle(val);
-        }
-        catch { return 0f; }
-    }
-
     // ── Small helpers ────────────────────────────────────────────────────────────────────────────────────────
 
-    // Locate a 0-arg method by name. Prefers StellarInterop.FindMethod (count-only match), falling back to a direct
-    // NonPublic scan since beginSingGuide/endSingGuide are private (belt-and-suspenders if FindMethod is public-only).
+    // Resolve the single public static SetSingGuide(ZEntity, float, float, bool, ESingGuideType) — 5 params, static.
+    private static MethodInfo? ResolveSetSingGuide(Type t)
+    {
+        try
+        {
+            foreach (var mi in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+                if (mi.Name == "SetSingGuide" && mi.GetParameters().Length == 5) return mi;
+        }
+        catch { }
+        return null;
+    }
+
+    // Locate a 0-arg method by name (prefers StellarInterop.FindMethod, then a direct NonPublic scan).
     private static MethodInfo? ResolveMethod0(Type t, string name)
     {
         var m = StellarInterop.FindMethod(t, name, 0);
@@ -317,13 +353,15 @@ internal static class CastPatch
         try { return v == null ? 0 : Convert.ToInt32(v); } catch { return 0; }
     }
 
-    private static float ReadFloat(MemberInfo? m, object t)
+    // Boxed enum / numeric → int (ESingGuideType is byte-backed; Convert handles the boxed enum).
+    private static int ToInt(object? v)
     {
-        var v = ReadMember(m, t);
-        try { return v == null ? 0f : Convert.ToSingle(v); } catch { return 0f; }
+        try { return v == null ? 0 : Convert.ToInt32(v); } catch { return 0; }
     }
 
     private static bool _loggedError;
+    private static bool _firstSetLogged;
+    private static bool _firstBeginLogged;
 
     private static void LogError(string src, Exception ex)
     {

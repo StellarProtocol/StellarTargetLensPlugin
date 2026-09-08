@@ -26,11 +26,11 @@ public sealed partial class Plugin
     private static readonly ColorRgba CastNormalColor = new(0.95f, 0.80f, 0.30f, 1f); // amber / yellow
     private static readonly ColorRgba CastDangerColor = new(0.92f, 0.32f, 0.20f, 1f); // red-orange (danger cast)
 
-    // Layout-edit sample: a danger cast mid-flight (count-up: 1.2s into a 4.0s cast) so the icon slot and the
-    // name-inside bar have content to size and place against when nothing is actually casting. skillId 0 → no icon
-    // resolves, the icon cell still reserves its width.
+    // Layout-edit sample: a danger cast mid-flight (30% filled) so the icon slot and the name-inside bar have content
+    // to size and place against when nothing is actually casting. skillId 0 → no icon resolves, the icon cell still
+    // reserves its width.
     private static readonly TargetInfoTracker.CastInfo ExampleCast =
-        new(casting: true, skillId: 0, skillName: "Meteor Strike", totalSec: 4.0f, elapsedSec: 1.2f, danger: true);
+        new(casting: true, skillId: 0, skillName: "Meteor Strike", danger: true, fraction: 0.30f);
 
     private void RegisterCastBarWindow()
     {
@@ -72,10 +72,10 @@ public sealed partial class Plugin
         _castBarWindow.SetVisible(_castBarOn);
     }
 
-    // Single row = [mini icon] [ count-UP bar: <skill name> ....... <elapsed / total> ], exactly the buff-list /
+    // Single row = [mini icon] [ count-UP bar: <skill name> ....... <percent> ], exactly the buff-list /
     // boss-timer row style (Plugin.BuffListWindow.cs / Plugin.BossTimerWindow.cs): the skill NAME sits inside-left
-    // (ellipsised), the "elapsed / total" seconds inside-right (SecondaryLabel), and the bar FILLS UP (elapsed
-    // fraction, 0→1) to match the game's cast bar direction. The normal-amber / danger-red split rides two mutually-
+    // (ellipsised), the percent inside-right (SecondaryLabel), and the bar FILLS UP (the game's own fraction,
+    // 0→1) to match the game's cast bar direction. The normal-amber / danger-red split rides two mutually-
     // exclusive bars gated by a ConditionalElement (BarElement's colour arg is a VALUE, not a Func — same trick the
     // buff-list debuff/buff split uses).
     private HudElement BuildCastBarWindowRoot()
@@ -140,18 +140,10 @@ public sealed partial class Plugin
         return Truncate(StripTags(n), CastNameBudget);
     }
 
-    // COUNT UP: elapsed fraction 0..1 (starts ~0, grows to 1). Clamp01 is defined in Plugin.TargetHud.cs (same class).
-    private float CastFraction()
-    {
-        var c = CastCur();
-        return c.TotalSec > 0f ? Clamp01(c.ElapsedSec / c.TotalSec) : 0f;
-    }
+    // COUNT UP: the game's own bar fill 0..1 (already direction-corrected in TargetInfoTracker.Cast.cs).
+    private float CastFraction() => Clamp01(CastCur().Fraction);
 
-    // Compact "elapsed / total" one-decimal readout — elapsed rises toward total, matching the in-game bar.
-    private string CastTimeLabel()
-    {
-        var c = CastCur();
-        float e = c.ElapsedSec < 0f ? 0f : c.ElapsedSec;
-        return $"{e:F1} / {c.TotalSec:F1}s";
-    }
+    // The producer (SetSingGuide) gives a bar value + max whose unit isn't reliably seconds, so we show a plain
+    // percent rather than a bogus "x / ys" — the fraction is the trustworthy quantity.
+    private string CastTimeLabel() => $"{(int)(Clamp01(CastCur().Fraction) * 100f)}%";
 }

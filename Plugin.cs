@@ -35,8 +35,8 @@ public sealed partial class Plugin : IStellarPlugin
         BuffTrackPatch.Install(_services.Harmony.Create("buff"), _services.Log.Info);
         // Boss DBM (deadly-skill) capture — postfix on DBMMgr.onDBMDatacChanged feeds BossDbmTracker (own host).
         DbmPatch.Install(_services.Harmony.Create("dbm"), _services.Log.Info);
-        // Cast/channel capture — postfixes on ZStateSkillComp.beginSingGuide/endSingGuide feed the cast-bar read for
-        // ANY target (boss/elite/normal mob). Own Harmony host, auto-unpatched on dispose.
+        // Cast/channel capture — postfix on EntityExtensions.SetSingGuide (per-frame bar producer; beginSingGuide is
+        // inlined) feeds the cast-bar read for ANY target (boss/elite/normal mob). Own Harmony host, auto-unpatched.
         CastPatch.Install(_services.Harmony.Create("cast"), _services.Log.Info);
 
         _targetInfo = new TargetInfoTracker(_services);

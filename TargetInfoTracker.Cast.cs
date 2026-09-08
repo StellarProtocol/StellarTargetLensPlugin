@@ -4,42 +4,36 @@ using UnityEngine;
 namespace Stellar.TargetLens;
 
 /// <summary>
-/// CAST BAR / channel ("吟唱/读条") read for the CURRENT target — now HOOK-SOURCED via <see cref="CastPatch"/> rather
-/// than scraped off the boss HP-frame widget. The patch latches every non-local caster's in-flight cast (keyed by
-/// caster uuid) at <c>beginSingGuide()</c> and drops it at <c>endSingGuide()</c>; this read simply looks up the entry
-/// for <see cref="LastTargetUuid"/>. Consequences vs the old widget scrape:
+/// CAST BAR / channel ("吟唱/读条") read for the CURRENT target — HOOK-SOURCED via <see cref="CastPatch"/>. The patch
+/// latches every non-local caster's in-flight cast (keyed by caster uuid) on each <c>EntityExtensions.SetSingGuide</c>
+/// tick — the per-frame producer that carries the real bar values — and this read simply looks up the entry for
+/// <see cref="LastTargetUuid"/>. Consequences vs the old widget scrape:
 /// <list type="bullet">
 ///   <item>Works for ANY caster — boss, elite, or normal mob — not just entities that own a <c>ZUIBossBlood</c> frame.</item>
-///   <item>We have the skill id, so the overlay can show the skill ICON, not just the name.</item>
-///   <item>Counts UP (elapsed 0→Total, matching the in-game bar) instead of a scraped remaining fraction.</item>
-///   <item>Clears PROMPTLY on interrupt — the end hook removes the latch entry; no widget countdown to drain.</item>
+///   <item>The fill is the GAME'S OWN bar value (<c>forward ? value/max : 1 − value/max</c>) — no local elapsed tick.</item>
+///   <item>Clears when the caster stops ticking: <see cref="CastPatch.TryGet"/> prunes an entry gone stale (~0.3s),
+///         the stand-in for an explicit end call (SetSingGuide has none) — so an interrupt drops the bar promptly.</item>
+///   <item>Skill id/name are best-effort enrichment; when unknown the overlay shows a generic "Casting…".</item>
 /// </list>
 ///
-/// <para>Frame-cached (one read per frame). A safety-expire drops an entry when elapsed runs past the total (in case
-/// an <c>endSingGuide</c> is ever missed), but the normal hide path is the end hook. Guarded — never throws.</para>
+/// <para>Frame-cached (one read per frame). Guarded — never throws.</para>
 /// </summary>
 internal sealed partial class TargetInfoTracker
 {
-    /// <summary>One frame's cast state off the current target. Elapsed COUNTS UP (0→Total), matching the game bar.</summary>
+    /// <summary>One frame's cast state off the current target. <see cref="Fraction"/> is the game's own bar fill 0→1.</summary>
     public readonly struct CastInfo
     {
         public readonly bool   Casting;
-        public readonly int    SkillId;      // leveled cast id — drives the overlay icon
-        public readonly string SkillName;
-        public readonly float  TotalSec;     // wall-clock cast seconds (already speed-adjusted by CastPatch)
-        public readonly float  ElapsedSec;   // rises 0 → TotalSec
+        public readonly int    SkillId;      // leveled cast id — drives the overlay icon (0 = unknown)
+        public readonly string SkillName;    // "" when unknown → overlay shows "Casting…"
         public readonly bool   Danger;       // MonsterDanger cast → red accent
-        public CastInfo(bool casting, int skillId, string skillName, float totalSec, float elapsedSec, bool danger)
+        public readonly float  Fraction;     // count-UP bar fill 0→1 (game's own value, direction-corrected)
+        public CastInfo(bool casting, int skillId, string skillName, bool danger, float fraction)
         {
             Casting = casting; SkillId = skillId; SkillName = skillName;
-            TotalSec = totalSec; ElapsedSec = elapsedSec; Danger = danger;
+            Danger = danger; Fraction = fraction;
         }
     }
-
-    // Safety-expire: a cast with a known total that overruns by this grace is treated as ended (a missed end hook);
-    // an unknown-total cast (couldn't resolve seconds) is capped absolutely so it can never linger forever.
-    private const float CastGraceSec   = 0.75f;
-    private const float CastHardCapSec = 60f;
 
     // ── [CastDiag] opt-in flag + change-gate (mirrors BreakDiag / ThreatDiag) ──
     public  bool   CastDiag;
@@ -64,20 +58,18 @@ internal sealed partial class TargetInfoTracker
         try
         {
             long uuid = LastTargetUuid;
-            if (uuid != 0 && CastPatch.TryGet(uuid, out var e))
+            if (uuid != 0 && CastPatch.TryGet(uuid, out var e))   // TryGet prunes a stale (ended/interrupted) entry
             {
-                float elapsed = (Environment.TickCount64 - e.SnapTick) / 1000f;
-                if (elapsed < 0f) elapsed = 0f;
-
-                // Prompt hide comes from endSingGuide (CastPatch drops the entry). This is only the safety net for a
-                // missed end: past total+grace (known total), or the absolute hard cap (unknown total).
-                bool overrun = (e.TotalSec > 0f && elapsed >= e.TotalSec + CastGraceSec) || elapsed >= CastHardCapSec;
-                if (!overrun)
+                // Count-UP fill straight from the game's bar value. forward → value/max; reverse → 1 − value/max.
+                // Guard a non-positive max (an enrichment-only seed before the first SetSingGuide tick) → 0.
+                float frac = 0f;
+                if (e.MaxValue > 0f)
                 {
-                    // COUNT UP: expose elapsed, clamped to Total so the bar fills exactly to full and holds there.
-                    float shown = e.TotalSec > 0f ? MathF.Min(e.TotalSec, elapsed) : elapsed;
-                    _castCache = new CastInfo(true, e.SkillId, e.Name ?? "", e.TotalSec, shown, e.Danger);
+                    float r = e.Value / e.MaxValue;
+                    frac = e.Forward ? r : 1f - r;
+                    if (frac < 0f) frac = 0f; else if (frac > 1f) frac = 1f;
                 }
+                _castCache = new CastInfo(true, e.SkillId, e.Name ?? "", e.Danger, frac);
             }
         }
         catch { _castCache = default; }
@@ -87,20 +79,25 @@ internal sealed partial class TargetInfoTracker
     }
 
     // Change-gated [CastDiag] line (opt-in via CastDiag). Confirms the read tracks the hook: which target, whether it
-    // is casting, the skill id/name, the count-up elapsed/total, danger, and how many casters are live in the latch
-    // (so a non-boss cast that fires the hook is visible even if it isn't the current target). Never throws.
+    // is casting, the skill id/name, the count-up fraction, danger, and how many casters are live in the latch (so a
+    // non-boss cast that fires the hook is visible even if it isn't the current target). Never throws.
     private void LogCastDiag()
     {
         if (!CastDiag) return;
         try
         {
             var c = _castCache;
-            string sig = $"{LastTargetUuid}|{c.Casting}|{c.SkillId}|{c.SkillName}|{c.ElapsedSec:F1}/{c.TotalSec:F1}|{c.Danger}|{CastPatch.ActiveCount}";
+            string sig = $"{LastTargetUuid}|{c.Casting}|{c.SkillId}|{c.SkillName}|{c.Fraction:F2}|{c.Danger}|{CastPatch.ActiveCount}";
             if (sig == _castDiagSig) return;
             _castDiagSig = sig;
+
+            long ageMs = -1;
+            if (LastTargetUuid != 0 && CastPatch.TryGet(LastTargetUuid, out var e))
+                ageMs = Environment.TickCount64 - e.LastTickMs;
+
             _services.Log.Info(
                 $"[CastDiag] uuid={LastTargetUuid} casting={c.Casting} skillId={c.SkillId} name='{c.SkillName}' " +
-                $"elapsed={c.ElapsedSec:F1}/{c.TotalSec:F1} danger={c.Danger} activeCasters={CastPatch.ActiveCount} " +
+                $"frac={c.Fraction:F2} danger={c.Danger} lastAgeMs={ageMs} activeCasters={CastPatch.ActiveCount} " +
                 $"patched={CastPatch.Installed}");
         }
         catch { /* diagnostic must never throw */ }
