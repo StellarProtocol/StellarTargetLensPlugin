@@ -25,12 +25,11 @@ public sealed partial class Plugin
         const float ListW = 300f;                 // min width — enough for a mini icon + a name + a compact time
         const float TitleReserve = 24f;           // title line + gap (matches BuffList.cs)
         const float Pad          = 16f;           // ColumnElement padding (8*2)
-        const int   DefaultRows  = 8;             // out-of-box height ≈ 8 rows
         const int   MinRows      = 3;             // shortest useful list
         const int   MaxRows      = BuffListSlots; // 16 — the pool ceiling
-        float minH = TitleReserve + Pad + MinRows     * BuffRowStride;   // ≈ 103
-        float maxH = TitleReserve + Pad + MaxRows     * BuffRowStride;   // ≈ 376
-        float defH = TitleReserve + Pad + DefaultRows * BuffRowStride;   // ≈ 208
+        float minH = TitleReserve + Pad + MinRows * BuffRowStride;   // ≈ 103
+        float maxH = TitleReserve + Pad + MaxRows * BuffRowStride;   // ≈ 376 (full 16-row pool)
+        float defH = 376f;   // out-of-box height = user's saved layout (16 rows; == maxH, top of the resize band)
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). X is a fraction of
         // ScreenWidth (0.2695*2560≈690) so it holds across resolutions; y absolute. Own saved drag/resize overrides.
