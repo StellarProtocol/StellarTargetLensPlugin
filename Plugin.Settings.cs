@@ -34,7 +34,6 @@ public sealed partial class Plugin
             Root: new ColumnElement(new HudElement[]
             {
                 // ── Target HUD ───────────────────────────────────────────────────
-                new SeparatorElement(),
                 new TextElement(() => _loc.T("tl.section.targetHud"), Emphasis: true),
                 new RowElement(new HudElement[]
                 {
