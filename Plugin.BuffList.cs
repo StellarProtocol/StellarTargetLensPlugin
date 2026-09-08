@@ -27,6 +27,8 @@ public sealed partial class Plugin
     private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
     private const float BuffRowStride = 21f;                               // bar (18) + column gap (3); one row's vertical footprint
     private const int   BuffListNameBudget = 22;                          // name chars before it's ellipsised (leaves room for the time)
+    private const string BuffListMarker    = "★ ";                         // leading "yours" marker on self-cast rows
+    private const int   BuffListMarkerWidth = 2;                          // BuffListMarker.Length — shave it off the name budget so the star doesn't grow the row
 
     // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
     // (GetBuffListIcon). Order: manual override → Imagine icon on the source skill → skill icon → the buff's OWN
@@ -72,12 +74,29 @@ public sealed partial class Plugin
         return ResolveEffectIcon(list[idx], out _buffListUv[idx]);
     }
 
+    // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast). SAME predicate as
+    // the classic tiles' HudEffectIsMine — FireUuid matches the local entity id (guarded; local==0 → false). Lets a
+    // user tell which effects THEY applied when "Show effects others applied" is on.
+    private bool BuffListIsMine(int idx)
+    {
+        var list = CurEffects();
+        if (idx >= list.Count) return false;
+        long local = _services.CombatSnapshot.LocalEntityId.Value;
+        return local != 0 && list[idx].FireUuid == local;
+    }
+
     // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned time.
+    // Rows the local player cast get a leading "★ " (same star meaning as the classic tiles). The marker is
+    // prepended AFTER truncation against a budget already reduced by its width, so a mine row's name still fits
+    // in the bar exactly like a non-mine one — the star never pushes the name into the time.
     private string BuffListName(int idx)
     {
         var list = CurEffects();
         if (idx >= list.Count) return "";
-        return Truncate(StripTags(ResolveEffectName(list[idx])), BuffListNameBudget);
+        bool mine = BuffListIsMine(idx);
+        int budget = mine ? BuffListNameBudget - BuffListMarkerWidth : BuffListNameBudget;
+        string name = Truncate(StripTags(ResolveEffectName(list[idx])), budget);
+        return mine ? BuffListMarker + name : name;
     }
 
     // Compact remaining time inside the bar (right): hours / minutes / seconds; permanent (RemainSec < 0) → blank.
