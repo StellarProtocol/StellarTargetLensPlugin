@@ -4,7 +4,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 // Standalone CAST BAR overlay — a separate auto-showing HUD window that appears while the CURRENT target is
-// channeling a skill, showing the skill icon + name + a count-UP bar, and hides the moment the cast ends or is
+// channeling a skill, showing the skill icon + a count-UP bar with the name inside it, and hides the moment the cast ends or is
 // interrupted. Mirrors the threat / boss-timer windows (Plugin.ThreatWindow.cs / Plugin.BossTimerWindow.cs): a
 // borderless auto-showing HUD overlay gated by ShouldRender, with layout-edit example data so it can be placed
 // without a live cast. The cast read is TargetInfoTracker.TryGetCast (see TargetInfoTracker.Cast.cs), now sourced
@@ -26,9 +26,9 @@ public sealed partial class Plugin
     private static readonly ColorRgba CastNormalColor = new(0.95f, 0.80f, 0.30f, 1f); // amber / yellow
     private static readonly ColorRgba CastDangerColor = new(0.92f, 0.32f, 0.20f, 1f); // red-orange (danger cast)
 
-    // Layout-edit sample: a danger cast mid-flight (count-up: 1.2s into a 4.0s cast) so the icon slot, name line and
-    // bar all have content to size and place against when nothing is actually casting. skillId 0 → no icon resolves,
-    // the icon cell still reserves its width.
+    // Layout-edit sample: a danger cast mid-flight (count-up: 1.2s into a 4.0s cast) so the icon slot and the
+    // name-inside bar have content to size and place against when nothing is actually casting. skillId 0 → no icon
+    // resolves, the icon cell still reserves its width.
     private static readonly TargetInfoTracker.CastInfo ExampleCast =
         new(casting: true, skillId: 0, skillName: "Meteor Strike", totalSec: 4.0f, elapsedSec: 1.2f, danger: true);
 
@@ -37,8 +37,8 @@ public sealed partial class Plugin
         // Persisted toggle drives both initial visibility and the ShouldRender gate (default ON — user asked for it).
         _castBarOn = _cfg.Get<bool>("cast_bar_on", true);
 
-        const float CastW = 340f;   // a conventional cast-bar width — icon + one name line + one bar
-        const float CastH = 66f;    // icon(34) row; name(~18)+gap(4)+bar(20) column; +padding(16) → content-fit
+        const float CastW = 340f;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
+        const float CastH = 34f;    // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
 
         // Conventional cast-bar spot: horizontally centered, upper third of the screen. Expressed off ScreenWidth
         // like the other overlays; the user's own saved drag overrides it.
@@ -72,33 +72,37 @@ public sealed partial class Plugin
         _castBarWindow.SetVisible(_castBarOn);
     }
 
-    // Skill icon on the left, then a name line + a single count-UP bar. The fill is the ELAPSED fraction (starts ~0,
-    // grows to 1) and the SecondaryLabel is the "elapsed / total" seconds — matching the game's cast bar direction.
-    private HudElement BuildCastBarWindowRoot() => new ColumnElement(new HudElement[]
+    // Single row = [mini icon] [ count-UP bar: <skill name> ....... <elapsed / total> ], exactly the buff-list /
+    // boss-timer row style (Plugin.BuffListWindow.cs / Plugin.BossTimerWindow.cs): the skill NAME sits inside-left
+    // (ellipsised), the "elapsed / total" seconds inside-right (SecondaryLabel), and the bar FILLS UP (elapsed
+    // fraction, 0→1) to match the game's cast bar direction. The normal-amber / danger-red split rides two mutually-
+    // exclusive bars gated by a ConditionalElement (BarElement's colour arg is a VALUE, not a Func — same trick the
+    // buff-list debuff/buff split uses).
+    private HudElement BuildCastBarWindowRoot()
     {
-        new RowElement(new HudElement[]
+        var normalBar = new BarElement(() => CastFraction(), CastNormalColor, () => CastNameLine())
         {
-            new CellElement(
-                new GameTextureElement(() => GetCastIcon(), 34, 34, () => _castUv),
-                Width: 40f),
-            new CellElement(new ColumnElement(new HudElement[]
+            Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 13,
+            LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
+        };
+        var dangerBar = new BarElement(() => CastFraction(), CastDangerColor, () => CastNameLine())
+        {
+            Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 13,
+            LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
+        };
+        return new ColumnElement(new HudElement[]
+        {
+            new RowElement(new HudElement[]
             {
-                new TextElement(() => CastNameLine(), Emphasis: true, FontSize: 15, NoWrap: true),
-                new ConditionalElement(() => !CastCur().Danger,
-                    new BarElement(() => CastFraction(), CastNormalColor, () => "")
-                    {
-                        Style = BarStyle.Modern, Height = 20f, FillWidth = true, LabelFontSize = 13,
-                        SecondaryLabel = () => CastTimeLabel(),
-                    }),
-                new ConditionalElement(() => CastCur().Danger,
-                    new BarElement(() => CastFraction(), CastDangerColor, () => "")
-                    {
-                        Style = BarStyle.Modern, Height = 20f, FillWidth = true, LabelFontSize = 13,
-                        SecondaryLabel = () => CastTimeLabel(),
-                    }),
-            }, Gap: 4f), Weight: 1f),
-        }, Gap: 8f),
-    }, Gap: 0f) { Padding = 8 };
+                new CellElement(
+                    new GameTextureElement(() => GetCastIcon(), 18, 18, () => _castUv),
+                    Width: 22f),
+                new CellElement(
+                    new ConditionalElement(() => CastCur().Danger, dangerBar, normalBar),
+                    Weight: 1f),
+            }, Gap: 6f),
+        }, Gap: 0f) { Padding = 8 };
+    }
 
     // ── Getters (layout-edit example data wins only when NOT actually casting) ──
 
@@ -125,10 +129,15 @@ public sealed partial class Plugin
         return _services.GameAssets.LoadSkillIcon(id, out _castUv);
     }
 
+    // Inside-left bar label = skill name, tag-stripped and ellipsised so it can't collide with the right-aligned
+    // "elapsed / total" (same Truncate(StripTags(...)) approach the buff-list / boss-timer rows use). The name budget
+    // leaves room for the time reserve at the 340 default width.
+    private const int CastNameBudget = 30;   // name chars before ellipsis (mirrors BuffListNameBudget's fixed cap)
     private string CastNameLine()
     {
         var n = CastCur().SkillName;
-        return string.IsNullOrEmpty(n) ? "Casting…" : n;
+        if (string.IsNullOrEmpty(n)) return "Casting…";
+        return Truncate(StripTags(n), CastNameBudget);
     }
 
     // COUNT UP: elapsed fraction 0..1 (starts ~0, grows to 1). Clamp01 is defined in Plugin.TargetHud.cs (same class).
