@@ -24,7 +24,10 @@ public sealed partial class Plugin
             Spec: new WindowSpec(
                 Id:          "targetlens.settings",
                 Title:       _loc.T("tl.settings.title"),
-                DefaultRect: new WindowRect(_services.Framework.ScreenWidth - 460f, 20f, 440f, 0f),
+                // Fixed 1440p-calibrated pixel default (2560 − 460 = 2100). A literal, NOT ScreenWidth −
+                // 460: the framework's "reset all HUD" path reads ScreenWidth as 0, which would push X to
+                // −460 (off-screen left). A constant survives reset. Height 0f = auto-fit.
+                DefaultRect: new WindowRect(2100f, 20f, 440f, 0f),
                 Category:    WindowCategory.Tools,
                 Style:       WindowPanelStyle.GlassMenu)
             { Draggable = true, Closable = true, StartVisible = false,
