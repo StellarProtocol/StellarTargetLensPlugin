@@ -30,7 +30,8 @@ public sealed partial class Plugin
     // to size and place against when nothing is actually casting. skillId 0 → no icon resolves, the icon cell still
     // reserves its width.
     private static readonly TargetInfoTracker.CastInfo ExampleCast =
-        new(casting: true, skillId: 0, skillName: "Meteor Strike", danger: true, fraction: 0.30f);
+        new(casting: true, skillId: 0, skillName: "Meteor Strike", danger: true,
+            elapsedSec: 1.6f, totalSec: 5.3f, fraction: 0.30f);
 
     private void RegisterCastBarWindow()
     {
@@ -140,10 +141,14 @@ public sealed partial class Plugin
         return Truncate(StripTags(n), CastNameBudget);
     }
 
-    // COUNT UP: the game's own bar fill 0..1 (already direction-corrected in TargetInfoTracker.Cast.cs).
+    // COUNT UP: the local elapsed/total fill 0..1 (direction-corrected in TargetInfoTracker.Cast.cs).
     private float CastFraction() => Clamp01(CastCur().Fraction);
 
-    // The producer (SetSingGuide) gives a bar value + max whose unit isn't reliably seconds, so we show a plain
-    // percent rather than a bogus "x / ys" — the fraction is the trustworthy quantity.
-    private string CastTimeLabel() => $"{(int)(Clamp01(CastCur().Fraction) * 100f)}%";
+    // Right-side label = elapsed / total SECONDS, counting up. SetSingGuide's maxValue is confirmed to be the total
+    // cast time in seconds, and elapsed is ticked locally, so this is a real "1.6 / 5.3s" readout.
+    private string CastTimeLabel()
+    {
+        var c = CastCur();
+        return $"{c.ElapsedSec:F1} / {c.TotalSec:F1}s";
+    }
 }
