@@ -41,10 +41,10 @@ public sealed partial class Plugin
         const float CastW = 340f;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
         const float CastH = 34f;    // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
 
-        // Conventional cast-bar spot: horizontally centered, upper third of the screen. Expressed off ScreenWidth
-        // like the other overlays; the user's own saved drag overrides it.
-        float x = (_services.Framework.ScreenWidth - CastW) / 2f;
-        float y = 140f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=1248, y=117). X is a fraction of
+        // ScreenWidth (0.4875*2560≈1248) so it holds across resolutions; y absolute. Own saved drag overrides.
+        float x = _services.Framework.ScreenWidth * 0.4875f;
+        float y = 117f;
 
         _castBarWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(

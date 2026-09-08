@@ -24,11 +24,10 @@ public sealed partial class Plugin
         // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.
         const float ThreatH = 150f;
 
-        // Top-right region like the Target HUD (which defaults to width 420 at ScreenWidth-420-202, y=26, height
-        // 240), but right-aligned at THIS narrower width and dropped BELOW the Target HUD's default footprint so
-        // the two don't overlap out of the box. The user's own saved drag still overrides this.
-        float x = _services.Framework.ScreenWidth - ThreatW - 202f;
-        float y = 26f + 240f + 8f;    // ≈ 274 — just under the Target HUD's default bottom edge
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=1589, y=0). X is a fraction of
+        // ScreenWidth (0.6207*2560≈1589) so it holds across resolutions; y absolute. Own saved drag overrides.
+        float x = _services.Framework.ScreenWidth * 0.6207f;
+        float y = 0f;
 
         _threatWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(

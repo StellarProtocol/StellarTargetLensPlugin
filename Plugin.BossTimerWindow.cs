@@ -31,18 +31,17 @@ public sealed partial class Plugin
         // Persisted toggle drives both initial visibility and the ShouldRender gate (default ON — user asked for it).
         _bossTimerOn = _cfg.Get<bool>("boss_timer_on", true);
 
-        const float TimerW = 260f;   // default width: icon + name + a compact MM:SS
+        const float TimerW = 300f;   // default width tuned in-game (within the 240–700 resize range): icon + name + MM:SS
         // Title + BossTimerSlots rows (~21px each) + gaps + padding. The window is WIDTH-resizable (drag wider to
         // fit longer skill names); Resizable disables content-auto-fit and FIXES the height, so we compute an
         // explicit height here and LOCK it below (MinHeight==MaxHeight) — width drags, height cannot.
         const float TitleReserve = 24f, Pad = 16f;
         float timerH = TitleReserve + Pad + BossTimerSlots * BuffRowStride;   // ≈ 208 (the fixed, locked height)
 
-        // The game's native DBM list sits top-LEFT; our other overlays (Target HUD / threat / buff list) live
-        // top-RIGHT. Put ours on the LEFT side, mid-upper, so it never overlaps them out of the box. The user's own
-        // saved drag/resize overrides this.
-        const float x = 40f;
-        const float y = 300f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=0). X is a fraction of
+        // ScreenWidth (0.2695*2560≈690) so it holds across resolutions; y absolute. Own saved drag/resize overrides.
+        float x = _services.Framework.ScreenWidth * 0.2695f;
+        float y = 0f;
 
         _bossTimerWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(

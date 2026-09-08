@@ -57,7 +57,8 @@ public sealed partial class Plugin
     {
         _monIcon = new MonsterIconLoader(_services);
 
-        const float HudW = 420f;
+        const float HudW = 420f;         // MIN width (drag floor); the out-of-box default width is wider (below)
+        const float HudDefaultW = 601f;  // default width tuned in-game (user widened from 420) — still ≥ HudW min
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
         // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged. The threat/aggro list is
         // its OWN window now (see Plugin.ThreatWindow.cs), so this HUD keeps its original fixed height.
@@ -75,16 +76,17 @@ public sealed partial class Plugin
         // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
         int style = _cfg.Get<int>("buff_style", 0);
         float HudH = style == 1 ? 140f : 240f;
-        // Default position tuned in-game (saved 2560x1440 rect x=1938,y=26 → 202px from the right edge, 26px down).
-        // Expressed as edge offsets so it holds across resolutions. A user's own saved drag still overrides this.
-        float x = _services.Framework.ScreenWidth - HudW - 202f;
-        float y = 26f;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=988, y=0, width widened to 601).
+        // X is expressed as a fraction of ScreenWidth (0.386*2560≈988) so it holds across resolutions; y absolute.
+        // A user's own saved drag still overrides this.
+        float x = _services.Framework.ScreenWidth * 0.386f;
+        float y = 0f;
 
         _targetHudWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.hud",
                 Title:       "Target HUD",
-                DefaultRect: new WindowRect(x, y, HudW, HudH),
+                DefaultRect: new WindowRect(x, y, HudDefaultW, HudH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
             {

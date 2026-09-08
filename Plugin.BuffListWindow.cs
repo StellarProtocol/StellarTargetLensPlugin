@@ -32,10 +32,10 @@ public sealed partial class Plugin
         float maxH = TitleReserve + Pad + MaxRows     * BuffRowStride;   // ≈ 376
         float defH = TitleReserve + Pad + DefaultRows * BuffRowStride;   // ≈ 208
 
-        // Top-right column like the other overlays, dropped BELOW the threat window's default footprint (y≈274,
-        // h≈150 → bottom ≈424) so nothing overlaps out of the box. The user's own saved drag/resize overrides this.
-        float x = _services.Framework.ScreenWidth - ListW - 202f;
-        float y = 26f + 240f + 8f + 150f + 8f;    // ≈ 432 — just under the threat window's default bottom edge
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). X is a fraction of
+        // ScreenWidth (0.2695*2560≈690) so it holds across resolutions; y absolute. Own saved drag/resize overrides.
+        float x = _services.Framework.ScreenWidth * 0.2695f;
+        float y = 73f;
 
         _buffListWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
