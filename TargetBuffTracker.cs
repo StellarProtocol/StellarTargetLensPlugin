@@ -77,10 +77,6 @@ internal sealed class TargetBuffTracker
     // RebuildLists skips rows the selection hides. Null (unset) shows everything (default until wired in).
     public TargetEffectSelection? Selection { get; set; }
 
-    // De-duplicated diagnostic: log the first time each distinct nonzero FireUuid is seen, to confirm in-game
-    // whether FireUuid shares the LocalEntityId id-space for self-applied effects (UNVERIFIED). HashSet caps spam.
-    private readonly HashSet<long> _firesLogged = new();
-
     public TargetBuffTracker(IPluginServices services, TargetInfoTracker info)
     {
         _services = services;
@@ -122,7 +118,6 @@ internal sealed class TargetBuffTracker
 
         if (!_compReflResolved) ResolveCompRefl();
         _live.Clear();
-        int serverCount = 0, clientCount = 0;
 
         var buffComp   = _piBuffComp?.GetValue(ent);
         var clientComp = _piClientBuffComp?.GetValue(ent);
@@ -148,10 +143,6 @@ internal sealed class TargetBuffTracker
                     long createMs = (long)(_piItemCreate?.GetValue(item)   ?? 0L);
                     long fire     = (long)(_piItemFire?.GetValue(item)     ?? 0L);
                     Upsert(u, baseId, layer, durMs, createMs, fire);
-                    serverCount++;
-                    // One-shot per distinct caster: confirm whether fire == local for self-applied effects.
-                    if (fire != 0 && _firesLogged.Add(fire))
-                        _services.Log.Info($"[TargetBuff] fire={fire} local={_services.CombatSnapshot.LocalEntityId.Value} baseId={baseId}");
                 }
             }
         }
@@ -177,7 +168,6 @@ internal sealed class TargetBuffTracker
                     float maxL   = (float)(_piClientMaxLife?.GetValue(item) ?? 0f);
                     long  durMs  = maxL > 0f ? (long)(maxL * 1000f) : 0L;
                     Upsert(u, buffId, layer, durMs, 0L, 0L);   // ClientBuffComp has no FireUuid → caster unknown (0)
-                    clientCount++;
                 }
             }
         }
@@ -189,14 +179,6 @@ internal sealed class TargetBuffTracker
         foreach (var k in _stale) _persist.Remove(k);
 
         RebuildLists();
-
-        // One-shot diagnostic per distinct target.
-        if (uuid != _lastDiagUuid)
-        {
-            _lastDiagUuid = uuid;
-            _services.Log.Info($"[TargetBuff] uuid={uuid} buffComp={buffComp != null} clientComp={clientComp != null} " +
-                $"server={serverCount} client={clientCount} buffs={_buffs.Count} debuffs={_debuffs.Count}");
-        }
     }
 
     private void Upsert(int uuid, int baseId, int layer, long durMs, long createMs, long fireUuid)
@@ -224,9 +206,6 @@ internal sealed class TargetBuffTracker
             row.SkillId   = skillId;
             row.SkillName = skillId > 0 ? BuffTrackPatch.LookupSkillName(skillId) : "";
             _persist[uuid] = row;
-            // Diagnostic: what the tile-icon path sees for this effect (src vs table skill, imagine detection).
-            _services.Log.Info($"[HudIcon] +eff base={baseId} src={src} table={tableSkill} skill={skillId} " +
-                $"name='{row.Name}' imagine={(skillId > 0 && _services.ResonanceData.GetImagineForSkill(skillId) != null)}");
         }
         else if (row!.SkillId == 0)
         {
@@ -315,7 +294,7 @@ internal sealed class TargetBuffTracker
             _all.Add(row);                                             // combined list for the compact HUD
         }
         Sort(_buffs); Sort(_debuffs); Sort(_all);
-        Cap0(_buffs, "buffs"); Cap0(_debuffs, "debuffs"); Cap0(_all, "all");
+        Cap0(_buffs); Cap0(_debuffs); Cap0(_all);
     }
 
     // First-seen (arrival) order — effects keep their position, new ones append, expired ones drop out
@@ -323,10 +302,9 @@ internal sealed class TargetBuffTracker
     private static void Sort(List<TargetBuffRow> list) =>
         list.Sort((a, b) => a.ArrivalSeq.CompareTo(b.ArrivalSeq));
 
-    private void Cap0(List<TargetBuffRow> list, string tag)
+    private void Cap0(List<TargetBuffRow> list)
     {
         if (list.Count <= Cap) return;
-        _services.Log.Info($"[TargetBuff] {tag} truncated {list.Count}→{Cap}");
         list.RemoveRange(Cap, list.Count - Cap);
     }
 
@@ -458,7 +436,6 @@ internal sealed class TargetBuffTracker
             yield return idx?.GetValue(list, new object[] { i });
     }
 
-    private long _lastDiagUuid = long.MinValue;
     private bool _loggedError;
 
     private void LogError(Exception ex)

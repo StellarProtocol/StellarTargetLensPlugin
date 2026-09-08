@@ -93,7 +93,6 @@ internal static partial class BuffTrackPatch
     private static bool          _fightSourceResolved;
 
     private static bool _loggedError;
-    private static bool _diagLogged;
 
     internal static bool Install(Harmony harmony, Action<string> log)
     {
@@ -174,14 +173,13 @@ internal static partial class BuffTrackPatch
         _piBuffRowName = _piBuffRowVisible = _piBuffRowType = _piBuffRowSkillId = null;
         _skillTableResolved = false;
         _skillTableInst = null; _miGetSkillRow = null; _piSkillRowName = null;
-        _loggedError = _diagLogged = false;
+        _loggedError = false;
     }
 
     // Reads the live buff lists from captured component instances and rebuilds _activeBuffs.
     // Replaces event-based tracking — removal and replacement are handled automatically.
     internal static void RefreshActiveBuffs()
     {
-        if (!_diagLogged) { _diagLogged = true; _log?.Invoke($"[Buff] Refresh: buffComp={_localBuffComp != null} clientComp={_localClientBuffComp != null}"); }
         var live = new HashSet<int>();
 
         if (_localBuffComp != null)
