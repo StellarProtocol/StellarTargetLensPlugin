@@ -60,9 +60,6 @@ internal sealed class BossDbmTracker
 
     private int _lastVersion;   // last DbmPatch capture version consumed (upsert only on a fresh batch)
 
-    // Opt-in per-entry census log (mirrors the other trackers' *Diag flags) — validates the CD units + the clock.
-    public bool DbmDiag;
-
     public BossDbmTracker(IPluginServices services) => _services = services;
 
     /// <summary>The active encounter's upcoming boss skills, soonest-cast first. Frame-cached (one read per
@@ -109,7 +106,7 @@ internal sealed class BossDbmTracker
 
         // ── Phase 2: an untrusted clock can't produce a meaningful countdown. Return the last-built list WITHOUT
         // clearing the latch or _current. ────────────────────────────────────────────────────────────────────────
-        if (!clockOk) { EmitCensus(ids.Length, _latch.Count); return; }
+        if (!clockOk) return;
 
         // ── Phase 3: build the display straight from the latch. Entries persist across empty pushes and count
         // smoothly to 0; only a genuinely expired entry (remain ≤ 0) is dropped from the latch here. ─────────────
@@ -119,8 +116,6 @@ internal sealed class BossDbmTracker
         {
             var (beginMs, durMs, name) = kv.Value;
             float remain = (beginMs + durMs - now) / 1000f;
-            if (DbmDiag)
-                _diagBuf.Append($"[{kv.Key} '{name}' begin={beginMs} cd={durMs / 1000L} remain={remain:F1}] ");
             if (remain <= 0f) { _expired.Add(kv.Key); continue; }   // genuinely expired → remove after the loop
             float total = durMs / 1000f;
             _current.Add(new DbmEntry(kv.Key, string.IsNullOrEmpty(name) ? $"#{kv.Key}" : name, remain, total));
@@ -130,9 +125,6 @@ internal sealed class BossDbmTracker
         // Soonest cast first (game orders the list by imminence).
         _current.Sort((a, b) => a.RemainSec.CompareTo(b.RemainSec));
         if (_current.Count > Cap) _current.RemoveRange(Cap, _current.Count - Cap);
-
-        EmitCensus(ids.Length, _latch.Count);
-        FlushDiag(now);
     }
 
     // ── DbmTable lookup (mirrors TargetInfoTracker.ResolveMonsterName) ────────────────────────────────────────
@@ -214,37 +206,6 @@ internal sealed class BossDbmTracker
         if (_serverTimeInst == null || _miGetServerTime == null) return 0L;
         try { return (long)(_miGetServerTime.Invoke(_serverTimeInst, null) ?? 0L); }
         catch { return 0L; }
-    }
-
-    // ── Always-on census (NOT gated behind DbmDiag) — change-gated so it doesn't spam. Confirms the postfix is
-    // firing and the latch holds across runs: patched (did the postfix install), batchIds (size of the last capture),
-    // latched (current latch size), and the first latched entry (id/name/begin/cd). ──────────────────────────────
-    private string _censusSig = "";
-
-    private void EmitCensus(int batchIds, int latched)
-    {
-        string firstRaw = "-";
-        foreach (var kv in _latch)
-        { firstRaw = $"[{kv.Key} '{kv.Value.name}' begin={kv.Value.beginMs} cd={kv.Value.durMs / 1000L}]"; break; }
-
-        string sig = $"patched={DbmPatch.Installed} batchIds={batchIds} latched={latched} firstRaw={firstRaw}";
-        if (sig == _censusSig) return;             // only log on state CHANGE
-        _censusSig = sig;
-        _services.Log.Info($"[BossDbm] {sig}");
-    }
-
-    // ── Diagnostics (change-gated per-entry census, opt-in via DbmDiag) — validates CD units + the server clock ──
-    private readonly System.Text.StringBuilder _diagBuf = new();
-    private string _diagSig = "";
-
-    private void FlushDiag(long now)
-    {
-        if (!DbmDiag) { _diagBuf.Clear(); return; }
-        string sig = $"latched={_latch.Count} now={now} {_diagBuf}";
-        _diagBuf.Clear();
-        if (sig == _diagSig) return;
-        _diagSig = sig;
-        _services.Log.Info($"[DbmDiag] serverNow={now} latched={_latch.Count} {(_latch.Count == 0 ? "(none)" : sig)}");
     }
 
     private bool _loggedError;

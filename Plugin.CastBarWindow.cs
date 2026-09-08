@@ -17,7 +17,6 @@ public sealed partial class Plugin
 {
     private IWindowControl _castBarWindow = null!;   // registered in the ctor; auto-shows while a target casts
     private bool           _castBarOn;               // config-backed: enable the cast-bar overlay (default ON)
-    private bool           _castDiag;                // config-backed: TEMPORARY cast-read diagnostic logging
     private UvRect         _castUv;                   // atlas rect for the current cast's skill icon (own slot)
 
     // Cast bar reads best warm + centered: amber for a normal cast, red-orange for the danger variant. BarElement's

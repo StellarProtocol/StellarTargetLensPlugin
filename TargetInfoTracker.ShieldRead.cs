@@ -22,7 +22,7 @@ namespace Stellar.TargetLens;
 ///   <item><b>Technique 3</b> — native field read of <c>value_</c>: walk parents to the class declaring the
 ///     <c>value_</c> backing field → <c>il2cpp_field_get_value_object</c> → re-wrap.</item>
 /// </list>
-/// Every technique is fully guarded (throw → null, outcome recorded); a failing one never aborts the others.
+/// Every technique is fully guarded (throw → null); a failing one never aborts the others.
 /// </summary>
 internal sealed partial class TargetInfoTracker
 {
@@ -36,7 +36,6 @@ internal sealed partial class TargetInfoTracker
     // Cached winning technique for the session (0 = not yet proven). Once a technique returns a non-null list we
     // lock to it — later frames run only that one (a null then simply means "no shield up this frame").
     private int    _shieldTech;
-    private string _t1Out = "", _t2Out = "", _t3Out = ""; // per-technique outcome for [ShieldDiag]
 
     // Resolve the interop types + the typed GetAttr method + the boxed attr value. Idempotent; safe to call every
     // frame. Depends on EnsureApi() having run (it caches _miGetAttrLong + the attr enum boxes) — guaranteed here
@@ -109,11 +108,7 @@ internal sealed partial class TargetInfoTracker
             case 3:
             {
                 object? iattr = GetShieldIAttr(ent);
-                if (iattr == null)
-                {
-                    if (tech == 2) _t2Out = "noiattr"; else _t3Out = "noiattr";
-                    return null;
-                }
+                if (iattr == null) return null;
                 return tech == 2 ? TryNativeGetValue(iattr) : TryNativeValueField(iattr);
             }
             default:
@@ -132,18 +127,9 @@ internal sealed partial class TargetInfoTracker
     // ── Technique 1 — typed GetAttr<RepeatedField<ShieldInfo>> (bypasses the interface wrapper) ──
     private object? TryTypedGetAttr(object ent)
     {
-        if (_miGetAttrShield == null || _shieldAttrBox == null) { _t1Out = "unavail"; return null; }
-        try
-        {
-            object? r = _miGetAttrShield.Invoke(ent, new object[] { _shieldAttrBox, true });
-            _t1Out = r == null ? "null" : r.GetType().Name;
-            return r;
-        }
-        catch (Exception ex)
-        {
-            _t1Out = "threw:" + Unwrap(ex).GetType().Name;
-            return null;
-        }
+        if (_miGetAttrShield == null || _shieldAttrBox == null) return null;
+        try { return _miGetAttrShield.Invoke(ent, new object[] { _shieldAttrBox, true }); }
+        catch { return null; }
     }
 
     // ── Technique 2 — native get_Value invoke on the wrapper pointer, then re-wrap the result ──
@@ -152,7 +138,7 @@ internal sealed partial class TargetInfoTracker
         try
         {
             IntPtr ptr = NativePtr(iattr);
-            if (ptr == IntPtr.Zero) { _t2Out = "noptr"; return null; }
+            if (ptr == IntPtr.Zero) return null;
 
             IntPtr method = IntPtr.Zero;
             for (IntPtr k = IL2CPP.il2cpp_object_get_class(ptr); k != IntPtr.Zero; k = IL2CPP.il2cpp_class_get_parent(k))
@@ -160,17 +146,15 @@ internal sealed partial class TargetInfoTracker
                 method = IL2CPP.il2cpp_class_get_method_from_name(k, "get_Value", 0);
                 if (method != IntPtr.Zero) break;
             }
-            if (method == IntPtr.Zero) { _t2Out = "nomethod"; return null; }
+            if (method == IntPtr.Zero) return null;
 
             IntPtr exc = IntPtr.Zero, res;
             unsafe { res = IL2CPP.il2cpp_runtime_invoke(method, ptr, (void**)null, ref exc); }
-            if (exc != IntPtr.Zero) { _t2Out = "excthrown"; return null; }
+            if (exc != IntPtr.Zero) return null;
 
-            object? list = WrapRepeated(res);
-            _t2Out = list != null ? list.GetType().Name : (res == IntPtr.Zero ? "null" : "wrapnull");
-            return list;
+            return WrapRepeated(res);
         }
-        catch (Exception ex) { _t2Out = "threw:" + Unwrap(ex).GetType().Name; return null; }
+        catch { return null; }
     }
 
     // ── Technique 3 — native read of the value_ backing field off the wrapper pointer, then re-wrap ──
@@ -179,7 +163,7 @@ internal sealed partial class TargetInfoTracker
         try
         {
             IntPtr ptr = NativePtr(iattr);
-            if (ptr == IntPtr.Zero) { _t3Out = "noptr"; return null; }
+            if (ptr == IntPtr.Zero) return null;
 
             IntPtr field = IntPtr.Zero;
             for (IntPtr k = IL2CPP.il2cpp_object_get_class(ptr); k != IntPtr.Zero; k = IL2CPP.il2cpp_class_get_parent(k))
@@ -187,14 +171,12 @@ internal sealed partial class TargetInfoTracker
                 field = IL2CPP.il2cpp_class_get_field_from_name(k, "value_");
                 if (field != IntPtr.Zero) break;
             }
-            if (field == IntPtr.Zero) { _t3Out = "nofield"; return null; }
+            if (field == IntPtr.Zero) return null;
 
             IntPtr obj = IL2CPP.il2cpp_field_get_value_object(field, ptr);
-            object? list = WrapRepeated(obj);
-            _t3Out = list != null ? list.GetType().Name : (obj == IntPtr.Zero ? "null" : "wrapnull");
-            return list;
+            return WrapRepeated(obj);
         }
-        catch (Exception ex) { _t3Out = "threw:" + Unwrap(ex).GetType().Name; return null; }
+        catch { return null; }
     }
 
     // Native pointer of an Il2CppInterop-wrapped object (null-safe).
@@ -209,7 +191,4 @@ internal sealed partial class TargetInfoTracker
         try { return Activator.CreateInstance(_closedRepeatedType, ptr); }
         catch { return null; }
     }
-
-    private static Exception Unwrap(Exception ex)
-        => ex is TargetInvocationException tie && tie.InnerException != null ? tie.InnerException : ex;
 }

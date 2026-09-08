@@ -15,10 +15,8 @@ public sealed partial class Plugin
     private bool           _showMine    = true;       // config-backed: include effects the local player applied
     private bool           _showOthers  = true;       // config-backed: include effects a third party applied
     private bool           _showMonster = true;       // config-backed: include the target's own + unknown-source effects
-    private bool           _breakDiag;                // config-backed: TEMPORARY break-gauge diagnostic logging
     private bool           _showHidden;               // config-backed: list + show internal/no-icon buffs (default OFF)
     private bool           _hidePermanent = true;     // config-backed: drop permanent / no-timer effects (default ON)
-    private bool           _dbmDiag;                  // config-backed: TEMPORARY boss skill-timer (DBM) diagnostic logging
 
     private void RegisterSettings()
     {
@@ -35,8 +33,9 @@ public sealed partial class Plugin
                                    && (_services.ClientState.UiState & GameUIState.Loading) == 0 },
             Root: new ColumnElement(new HudElement[]
             {
+                // ── Target HUD ───────────────────────────────────────────────────
                 new SeparatorElement(),
-                new TextElement(() => "Target Lens", Emphasis: true),
+                new TextElement(() => "Target HUD", Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _targetHudOn, Set: v =>
@@ -47,6 +46,31 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => "Show Target HUD (top-right overlay)"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => "Buff / debuff display"),
+                    new DropdownElement(
+                        Selected: () => _buffStyle,
+                        Options:  () => BuffStyleOptions,
+                        OnSelect: SetBuffStyle,
+                        Width:    200f),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
+                    {
+                        _hidePermanent = v;
+                        _targetBuff.HidePermanent = v;
+                        _cfg.Set<bool>("hide_permanent", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => "Hide permanent target buffs"),
+                }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
+                    new TextElement(() => "Show hidden effects"),
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
@@ -83,31 +107,13 @@ public sealed partial class Plugin
                 }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
-                    new ToggleElement(Label: () => "", Get: () => _breakDiag, Set: v =>
-                    {
-                        _breakDiag = v;
-                        _targetInfo.BreakDiag = v;
-                        _cfg.Set<bool>("break_diag", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Break-gauge diagnostic (log to BepInEx)"),
+                    new ButtonElement(() => "Select effects…", OnClick: () => _selectWindow.SetVisible(true)),
+                    new TextElement(() => "Choose which buffs/debuffs appear on the HUD"),
                 }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
-                    new TextElement(() => "Show hidden effects"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
-                    {
-                        _hidePermanent = v;
-                        _targetBuff.HidePermanent = v;
-                        _cfg.Set<bool>("hide_permanent", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Hide permanent target buffs"),
-                }, Gap: 6f),
+
+                // ── Threat / Aggro ───────────────────────────────────────────────
+                new SeparatorElement(),
+                new TextElement(() => "Threat / Aggro", Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _showThreat, Set: v =>
@@ -121,41 +127,10 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => "Show threat / aggro list"),
                 }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _threatDiag, Set: v =>
-                    {
-                        _threatDiag = v;
-                        _targetInfo.ThreatDiag = v;
-                        _cfg.Set<bool>("threat_diag", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Threat diagnostic (log to BepInEx)"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
-                    {
-                        // The boss skill-timer list is its own window, so the toggle takes full effect live: flip the
-                        // window's visibility straight away (no reserved-height reload caveat).
-                        _bossTimerOn = v;
-                        _bossTimerWindow.SetVisible(v);
-                        _cfg.Set<bool>("boss_timer_on", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Show boss skill timers"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _dbmDiag, Set: v =>
-                    {
-                        _dbmDiag = v;
-                        _bossDbm.DbmDiag = v;
-                        _cfg.Set<bool>("dbm_diag", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => "Boss-timer diagnostic (log to BepInEx)"),
-                }, Gap: 6f),
+
+                // ── Cast Bar ─────────────────────────────────────────────────────
+                new SeparatorElement(),
+                new TextElement(() => "Cast Bar", Emphasis: true),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _castBarOn, Set: v =>
@@ -169,32 +144,22 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => "Show cast bar"),
                 }, Gap: 6f),
+
+                // ── Boss Skill Timers ────────────────────────────────────────────
+                new SeparatorElement(),
+                new TextElement(() => "Boss Skill Timers", Emphasis: true),
                 new RowElement(new HudElement[]
                 {
-                    new ToggleElement(Label: () => "", Get: () => _castDiag, Set: v =>
+                    new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
                     {
-                        _castDiag = v;
-                        _targetInfo.CastDiag = v;
-                        CastPatch.Diag = v;   // keep the patch's begin/end event logging in sync with the toggle
-                        _cfg.Set<bool>("cast_diag", v);
+                        // The boss skill-timer list is its own window, so the toggle takes full effect live: flip the
+                        // window's visibility straight away (no reserved-height reload caveat).
+                        _bossTimerOn = v;
+                        _bossTimerWindow.SetVisible(v);
+                        _cfg.Set<bool>("boss_timer_on", v);
                         _cfg.Save();
                     }),
-                    new TextElement(() => "Cast-bar diagnostic (log to BepInEx)"),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => "Buff / debuff display"),
-                    new DropdownElement(
-                        Selected: () => _buffStyle,
-                        Options:  () => BuffStyleOptions,
-                        OnSelect: SetBuffStyle,
-                        Width:    200f),
-                }, Gap: 6f),
-                new SeparatorElement(),
-                new RowElement(new HudElement[]
-                {
-                    new ButtonElement(() => "Select effects…", OnClick: () => _selectWindow.SetVisible(true)),
-                    new TextElement(() => "Choose which buffs/debuffs appear on the HUD"),
+                    new TextElement(() => "Show boss skill timers"),
                 }, Gap: 6f),
             }, Gap: 8f),
             OnClose: () => _settingsWindow.SetVisible(false)));

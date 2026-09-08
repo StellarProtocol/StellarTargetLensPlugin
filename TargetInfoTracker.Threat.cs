@@ -33,10 +33,9 @@ internal sealed partial class TargetInfoTracker
         public readonly long   HateVal; // raw aggro magnitude (uint on the wire, widened to long for the sum)
         public readonly float  Pct;     // HateVal / Σ HateVal, 0..1
         public readonly bool   IsLocal; // Uuid == local player entity id
-        public readonly string NameSrc; // diag only — which resolution step produced Name (attrName/party/…)
-        public ThreatEntry(long uuid, string name, long hateVal, float pct, bool isLocal, string nameSrc = "")
+        public ThreatEntry(long uuid, string name, long hateVal, float pct, bool isLocal)
         {
-            Uuid = uuid; Name = name; HateVal = hateVal; Pct = pct; IsLocal = isLocal; NameSrc = nameSrc;
+            Uuid = uuid; Name = name; HateVal = hateVal; Pct = pct; IsLocal = isLocal;
         }
     }
 
@@ -46,7 +45,6 @@ internal sealed partial class TargetInfoTracker
     private Type?       _hateInfoType;
     private MemberInfo? _hateUuidMember;
     private MemberInfo? _hateValMember;
-    private bool        _hateElemProbed;   // one-shot [ThreatProbe] on the first element
 
     // ── Concrete list walk (Count + indexer), own cache (re-resolve on type change) ──
     private PropertyInfo? _piHateCount;
@@ -56,12 +54,6 @@ internal sealed partial class TargetInfoTracker
     // ── Frame-gated result cache ────────────────────────────────────────────────
     private int                _threatFrame = -1;
     private readonly List<ThreatEntry> _threatList = new();
-
-    // ── [ThreatDiag] opt-in flag + change-gate (mirrors BreakDiag) ──────────────
-    public  bool   ThreatDiag;
-    private long   _threatDiagUuid  = long.MinValue;
-    private string _threatDiagSig   = "";
-    private long   _threatLocalUuid;  // local player uuid the last build matched against — surfaced in the diag header
 
     /// <summary>
     /// The target's (<see cref="LastTargetEntity"/>) threat table, sorted DESC by <see cref="ThreatEntry.HateVal"/>
@@ -76,21 +68,19 @@ internal sealed partial class TargetInfoTracker
         _threatFrame = f;
         _threatList.Clear();
 
-        int count = 0, tech = 0;
-        _h1Out = _h2Out = _h3Out = "-";
+        int count = 0;
         try
         {
             var ent = LastTargetEntity;
             if (ent != null)
             {
-                object? list = AcquireHateList(ent, out tech);
+                object? list = AcquireHateList(ent, out _);
                 if (list != null && ResolveHateListHandles(list))
                 {
                     count = _piHateCount!.GetValue(list) is int n ? n : 0;
 
                     long localUuid = 0;
                     try { localUuid = _services.CombatSnapshot.LocalEntityId.Value; } catch { localUuid = 0; }
-                    _threatLocalUuid = localUuid; // remembered for the [ThreatDiag] header
 
                     // First pass — gather (uuid, hate) and the total, so each row's Pct can be computed.
                     var raw = new List<(long uuid, long hate)>(count);
@@ -99,7 +89,6 @@ internal sealed partial class TargetInfoTracker
                     {
                         var hi = _miHateGetItem!.Invoke(list, new object[] { i });
                         if (hi == null) continue;
-                        if (i == 0) ProbeHateElement(hi);
                         if (!ResolveHateFields(hi)) continue;
                         long u = ReadLongMember(_hateUuidMember, hi);
                         long h = ReadLongMember(_hateValMember, hi);
@@ -110,10 +99,10 @@ internal sealed partial class TargetInfoTracker
                     foreach (var (u, h) in raw)
                     {
                         float pct    = sum > 0 ? (float)h / sum : 0f;
-                        string name  = ResolveThreatName(u, localUuid, out string src);
+                        string name  = ResolveThreatName(u, localUuid);
                         // isLocal is decided ONCE, after the sort, by a single-winner pass — never inline here, or a
                         // client/server uuid variance can flag two rows gold. Build every row non-local.
-                        _threatList.Add(new ThreatEntry(u, name, h, pct, false, src));
+                        _threatList.Add(new ThreatEntry(u, name, h, pct, false));
                     }
 
                     // Highest aggro first — the display Top-N and the local-append both rely on this order.
@@ -133,7 +122,7 @@ internal sealed partial class TargetInfoTracker
                         if (li >= 0)
                         {
                             var e = _threatList[li];
-                            _threatList[li] = new ThreatEntry(e.Uuid, e.Name, e.HateVal, e.Pct, true, e.NameSrc);
+                            _threatList[li] = new ThreatEntry(e.Uuid, e.Name, e.HateVal, e.Pct, true);
                         }
                     }
                 }
@@ -141,14 +130,13 @@ internal sealed partial class TargetInfoTracker
         }
         catch { _threatList.Clear(); }
 
-        LogThreatDiag(tech, count);
         entries = _threatList; return _threatList.Count > 0;
     }
 
-    // Player-name resolution ladder (Change 1). First non-empty wins; `src` records which step produced the name
-    // for the [ThreatDiag] readout. HateInfo.Uuid is the FULL 64-bit uuid for entity/attr lookups; uuid>>16 is the
-    // CharId/roleId (PartyRoster key + last-resort label). Never throws — worst case returns "Player <roleId>".
-    private string ResolveThreatName(long uuid, long localUuid, out string src)
+    // Player-name resolution ladder (Change 1). First non-empty wins. HateInfo.Uuid is the FULL 64-bit uuid for
+    // entity/attr lookups; uuid>>16 is the CharId/roleId (PartyRoster key + last-resort label). Never throws —
+    // worst case returns "Player <roleId>".
+    private string ResolveThreatName(long uuid, long localUuid)
     {
         // 1. Primary — AttrName off the live entity (exactly what the game's damage-list UI reads).
         var ent = GetEntityObj(uuid);
@@ -156,26 +144,25 @@ internal sealed partial class TargetInfoTracker
         {
             string an = ReadAttrString(ent, _attrNameBox);          // technique (a): GetAttr<object>(1).ToString()
             if (string.IsNullOrEmpty(an)) an = ReadAttrNameNative(ent); // technique (b): native get_Value on GetLuaAttr(1)
-            if (!string.IsNullOrEmpty(an)) { src = "attrName"; return an; }
+            if (!string.IsNullOrEmpty(an)) return an;
         }
 
         // 2. Fallback A — PartyRoster (party/raid members even when outside AOI), keyed by CharId = uuid>>16.
         string pr = ResolvePartyName(uuid >> 16);
-        if (!string.IsNullOrEmpty(pr)) { src = "party"; return pr; }
+        if (!string.IsNullOrEmpty(pr)) return pr;
 
         // 3. Fallback B — CombatLookup (AOI-scoped; may be empty for hate-list players not in it).
         string cl = ResolveName(uuid);
-        if (!string.IsNullOrEmpty(cl)) { src = "combatLookup"; return cl; }
+        if (!string.IsNullOrEmpty(cl)) return cl;
 
         // 4. Fallback C — self (the local player's own row).
         if (localUuid != 0 && (uuid >> 16) == (localUuid >> 16))
         {
             string self = ResolveSelfName();
-            if (!string.IsNullOrEmpty(self)) { src = "self"; return self; }
+            if (!string.IsNullOrEmpty(self)) return self;
         }
 
         // 5. Last resort — the roleId, so a row always carries a label.
-        src = "roleId";
         return "Player " + (uuid >> 16);
     }
 
@@ -235,53 +222,5 @@ internal sealed partial class TargetInfoTracker
                 { _miHateGetItem = m; break; }
         }
         return _piHateCount != null && _miHateGetItem != null;
-    }
-
-    // ── Diagnostics ─────────────────────────────────────────────────────────────
-
-    // One-time probe on the first hate element: confirms the element type and whether Uuid/HateVal resolved as a
-    // property or a field (the key struct-read unknown). Ungated + one-shot, so it's cheap and always in the log.
-    private void ProbeHateElement(object hi)
-    {
-        if (_hateElemProbed) return;
-        _hateElemProbed = true;
-        try
-        {
-            var t = hi.GetType();
-            _services.Log.Info($"[ThreatProbe] elem={t.FullName} isValueType={t.IsValueType} " +
-                               $"uuidVia={MemberKind(FindMember(t, "Uuid"))} hateVia={MemberKind(FindMember(t, "HateVal"))}");
-        }
-        catch { /* diagnostic must never throw */ }
-    }
-
-    // Change-gated [ThreatDiag] line (opt-in via the ThreatDiag flag). Logs which technique won plus each
-    // technique's outcome, the list count, and every entry (uuid name hateVal pct%) — so a FAILED read stays
-    // unambiguously diagnosable without spamming the log every frame.
-    private void LogThreatDiag(int tech, int count)
-    {
-        if (!ThreatDiag) return;
-        try
-        {
-            var sb = new System.Text.StringBuilder();
-            foreach (var e in _threatList)
-            {
-                sb.Append(" [").Append(e.Uuid).Append(' ').Append(e.Name).Append("<-").Append(e.NameSrc)
-                  .Append(' ').Append(e.HateVal).Append(' ').Append((int)(e.Pct * 100f)).Append('%');
-                if (e.IsLocal) sb.Append(" L"); // the single local-flagged row — confirms exactly one is gold
-                sb.Append(']');
-            }
-            string entries = sb.ToString();
-
-            // Change-gate on target uuid + the full technique/count/entries signature so a moving value logs but a
-            // steady one doesn't spam. (entries embeds the ` L` marker, so a local-flag flip re-logs on its own.)
-            string sig = $"{tech}|{_h1Out}|{_h2Out}|{_h3Out}|{count}|{entries}";
-            if (LastTargetUuid == _threatDiagUuid && sig == _threatDiagSig) return;
-            _threatDiagUuid = LastTargetUuid;
-            _threatDiagSig  = sig;
-            _services.Log.Info(
-                $"[ThreatDiag] uuid={LastTargetUuid} local={_threatLocalUuid} tech={tech} " +
-                $"T1={_h1Out} T2={_h2Out} T3={_h3Out} listCount={count} entries={entries}");
-        }
-        catch { /* diagnostic must never throw */ }
     }
 }

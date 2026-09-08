@@ -47,7 +47,6 @@ internal sealed partial class TargetInfoTracker
     private const int AttrMaxStunnedId      = 442;   // EAttrType.AttrMaxStunned — break gauge max (>0 = target has one)
     private const int AttrLevel             = 10000; // EAttrType.AttrLevel — character level (monster support UNVERIFIED → fallback)
     private const int AttrMonsterSeasonLevel = 462;  // EAttrType.AttrMonsterSeasonLevel — level fallback for monsters
-    private const int AttrIdCfg             = 10;    // EAttrType.AttrId — MonsterTable config id (NOT uuid>>16 entId)
 
     private readonly IPluginServices _services;
     public TargetInfoTracker(IPluginServices services) => _services = services;
@@ -94,13 +93,11 @@ internal sealed partial class TargetInfoTracker
             // Config id + bound name come off the entity's config row (entRow_) — the reliable source; AttrId(10)
             // reads 0 and uuid>>16 is only the runtime entId, so both are demoted to fallbacks.
             long uuidMobId = targetUuid >> 16;
-            long   attrId = 0, baseId = 0, configUuid = 0, cfgId2 = 0;
+            long   baseId = 0, cfgId2 = 0;
             string cfgName = "";
             if (targetEnt != null)
             {
-                try { attrId = ReadAttr(targetEnt, _attrIdCfgBox); } catch { attrId = 0; }
-                try { baseId     = _piBaseId?.GetValue(targetEnt)     is int bi ? bi : 0; } catch { baseId = 0; }
-                try { configUuid = _piConfigUuid?.GetValue(targetEnt) is long cu ? cu : 0; } catch { configUuid = 0; }
+                try { baseId = _piBaseId?.GetValue(targetEnt) is int bi ? bi : 0; } catch { baseId = 0; }
                 var ec = ReadEntConfig(targetEnt);
                 cfgId2 = ec.id; cfgName = ec.name;
             }
@@ -161,13 +158,6 @@ internal sealed partial class TargetInfoTracker
                 catch { hasDist = false; }
             }
 
-            if (targetUuid != _lastDiagUuid)
-            {
-                _lastDiagUuid = targetUuid;
-                _services.Log.Info($"[Target] diag uuid={targetUuid} uuidMobId={uuidMobId} entType={(targetUuid>>6)&31} tEntNull={targetEnt==null} attrId={attrId} baseId={baseId} cfgUuid={configUuid} entCfgId={cfgId2} configId={configId} hp={hp} stunned={stunned} maxStunned={maxStunned} nameCL='{clName}' entName='{cfgName}' name='{name}'");
-            }
-
-            LogBreakDiag(targetUuid, configId, name, (int)stunned, (int)maxStunned, targetEnt);
             return new Snapshot(true, targetUuid, name, hp, maxHp, stunned, maxStunned, level, rank, configId, hasDist, dist);
         }
         catch (Exception ex)
@@ -302,7 +292,6 @@ internal sealed partial class TargetInfoTracker
     private object?       _attrMaxStunnedBox;
     private object?       _attrLevelBox;
     private object?       _attrMonSeasonLvlBox;
-    private object?       _attrIdCfgBox;
     private PropertyInfo? _piIsBoss;           // ZEntity.IsBoss  (public instance bool)
     private PropertyInfo? _piIsElite;          // ZEntity.IsElite (public instance bool)
     private PropertyInfo? _piModel;            // ZEntity.Model (Panda.ZGame.ZModel)
@@ -327,7 +316,6 @@ internal sealed partial class TargetInfoTracker
     private MethodInfo?   _miMonTryGetValue;      // ZTable<int,MonsterTableBase>.TryGetValue(int, out row, bool)
     private bool          _monTryGetResolved;
     private long          _lastMonCfgIdDiag = long.MinValue; // change-gate for the config-table diagnostic
-    private long          _lastDiagUuid     = long.MinValue; // change-gate for the rich per-target diagnostic
 
     private bool EnsureApi()
     {
@@ -372,7 +360,6 @@ internal sealed partial class TargetInfoTracker
             _attrMaxStunnedBox   = Enum.ToObject(attrEnum, AttrMaxStunnedId);
             _attrLevelBox        = Enum.ToObject(attrEnum, AttrLevel);
             _attrMonSeasonLvlBox = Enum.ToObject(attrEnum, AttrMonsterSeasonLevel);
-            _attrIdCfgBox        = Enum.ToObject(attrEnum, AttrIdCfg);
 
             // Rank flags — OPTIONAL: missing props just degrade Rank to "Normal", never break name/HP.
             const BindingFlags pubInst = BindingFlags.Public | BindingFlags.Instance;

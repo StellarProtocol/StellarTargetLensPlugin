@@ -43,17 +43,12 @@ internal sealed partial class TargetInfoTracker
     private Type?         _shieldInfoType;
     private MemberInfo?   _shieldValueMember;
     private MemberInfo?   _shieldMaxMember;
-    private bool          _shieldElemProbed;   // one-shot [ShieldProbe] on the first element
 
     // ── Frame-gated result cache ────────────────────────────────────────────────
     private int  _shieldFrame = -1;
     private long _shieldCur;
     private long _shieldMax;
     private bool _shieldHas;
-
-    // ── [ShieldDiag] change-gate (per target uuid + last-logged signature) ──────
-    private long   _shieldDiagUuid = long.MinValue;
-    private string _shieldDiagSig  = "";
 
     /// <summary>
     /// Current summed shield off the live target (<see cref="LastTargetEntity"/>). Frame-cached: computes once
@@ -70,14 +65,13 @@ internal sealed partial class TargetInfoTracker
         _shieldFrame = f;
         _shieldCur = 0; _shieldMax = 0; _shieldHas = false;
 
-        int count = 0, tech = 0;
-        _t1Out = _t2Out = _t3Out = "-";
+        int count = 0;
         try
         {
             var ent = LastTargetEntity;
             if (ent != null)
             {
-                object? list = AcquireShieldList(ent, out tech);
+                object? list = AcquireShieldList(ent, out _);
                 if (list != null && ResolveListHandles(list))
                 {
                     count = _piListCount!.GetValue(list) is int n ? n : 0;
@@ -86,7 +80,6 @@ internal sealed partial class TargetInfoTracker
                     {
                         var si = _miListGetItem!.Invoke(list, new object[] { i });
                         if (si == null) continue;
-                        if (i == 0) ProbeElement(si);
                         if (!ResolveShieldFields(si)) continue;
                         sumCur += ReadLongMember(_shieldValueMember, si);
                         sumMax += ReadLongMember(_shieldMaxMember, si);
@@ -101,7 +94,6 @@ internal sealed partial class TargetInfoTracker
             _shieldCur = 0; _shieldMax = 0; _shieldHas = false;
         }
 
-        LogShieldDiag(tech, count);
         cur = _shieldCur; max = _shieldMax; return _shieldHas;
     }
 
@@ -180,50 +172,5 @@ internal sealed partial class TargetInfoTracker
             return v == null ? 0L : Convert.ToInt64(v);
         }
         catch { return 0L; }
-    }
-
-    // ── Diagnostics ─────────────────────────────────────────────────────────────
-
-    // One-time probe on the first shield element: confirms the element type and whether Value/MaxValue resolved as a
-    // property or a field (the key struct-read unknown). Ungated + one-shot, so it's cheap and always in the log.
-    private void ProbeElement(object si)
-    {
-        if (_shieldElemProbed) return;
-        _shieldElemProbed = true;
-        try
-        {
-            var t  = si.GetType();
-            var vm = FindMember(t, "Value");
-            var mm = FindMember(t, "MaxValue");
-            _services.Log.Info($"[ShieldProbe] elem={t.FullName} isValueType={t.IsValueType} " +
-                               $"valueVia={MemberKind(vm)} maxVia={MemberKind(mm)}");
-        }
-        catch { /* diagnostic must never throw */ }
-    }
-
-    private static string MemberKind(MemberInfo? m) => m switch
-    {
-        PropertyInfo => "prop",
-        FieldInfo    => "field",
-        _            => "none",
-    };
-
-    // Change-gated [ShieldDiag] line (opt-in via the shared BreakDiag flag). Logs which technique won plus each
-    // technique's outcome, the list count, and the summed cur/max — so a FAILED read (or a genuinely empty
-    // AttrShieldList while a shield is visibly up) stays unambiguously diagnosable without spamming.
-    private void LogShieldDiag(int tech, int count)
-    {
-        if (!BreakDiag) return;
-        try
-        {
-            string sig = $"{tech}|{_t1Out}|{_t2Out}|{_t3Out}|{count}|{_shieldCur}|{_shieldMax}";
-            if (LastTargetUuid == _shieldDiagUuid && sig == _shieldDiagSig) return;
-            _shieldDiagUuid = LastTargetUuid;
-            _shieldDiagSig  = sig;
-            _services.Log.Info(
-                $"[ShieldDiag] uuid={LastTargetUuid} tech={tech} " +
-                $"T1={_t1Out} T2={_t2Out} T3={_t3Out} listCount={count} cur={_shieldCur} max={_shieldMax}");
-        }
-        catch { /* diagnostic must never throw */ }
     }
 }

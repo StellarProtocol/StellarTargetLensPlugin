@@ -66,15 +66,6 @@ public sealed partial class Plugin : IStellarPlugin
         _targetBuff.ShowMine    = _showMine;
         _targetBuff.ShowOthers  = _showOthers;
         _targetBuff.ShowMonster = _showMonster;
-        _breakDiag           = _cfg.Get<bool>("break_diag", false);
-        _targetInfo.BreakDiag = _breakDiag;
-        _threatDiag           = _cfg.Get<bool>("threat_diag", false);
-        _targetInfo.ThreatDiag = _threatDiag;
-        _dbmDiag              = _cfg.Get<bool>("dbm_diag", false);
-        _bossDbm.DbmDiag      = _dbmDiag;
-        _castDiag             = _cfg.Get<bool>("cast_diag", false);
-        _targetInfo.CastDiag  = _castDiag;
-        CastPatch.Diag        = _castDiag;   // begin/end event logging lives in the patch (where the events fire)
         _showHidden            = _cfg.Get<bool>("show_hidden", false);   // default OFF: hidden buffs are opt-in
         _targetBuff.ShowHidden = _showHidden;
         _hidePermanent            = _cfg.Get<bool>("hide_permanent", true);   // default ON: permanent/no-timer effects hidden

@@ -14,7 +14,6 @@ namespace Stellar.TargetLens;
 public sealed partial class Plugin
 {
     private bool _showThreat;   // config-backed: show the threat/aggro window (default OFF)
-    private bool _threatDiag;   // config-backed: TEMPORARY threat-read diagnostic logging
 
     private const int   ThreatTopN   = 4;      // number of highest-aggro rows shown
     private const int   ThreatSlots   = ThreatTopN + 1; // + 1 for the local player's appended row

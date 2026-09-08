@@ -43,10 +43,6 @@ internal sealed partial class TargetInfoTracker
         }
     }
 
-    // ── [CastDiag] opt-in flag + change-gate (mirrors BreakDiag / ThreatDiag) ──
-    public  bool   CastDiag;
-    private string _castDiagSig = "";
-
     // ── Frame-gated result cache ───────────────────────────────────────────────
     private int      _castFrame = -1;
     private CastInfo _castCache;
@@ -85,32 +81,6 @@ internal sealed partial class TargetInfoTracker
         }
         catch { _castCache = default; }
 
-        LogCastDiag();
         info = _castCache; return _castCache.Casting;
-    }
-
-    // Change-gated [CastDiag] line (opt-in via CastDiag). Confirms the read tracks the hook: which target, whether it
-    // is casting, the skill id/name, the count-up fraction, danger, and how many casters are live in the latch (so a
-    // non-boss cast that fires the hook is visible even if it isn't the current target). Never throws.
-    private void LogCastDiag()
-    {
-        if (!CastDiag) return;
-        try
-        {
-            var c = _castCache;
-            string sig = $"{LastTargetUuid}|{c.Casting}|{c.SkillId}|{c.SkillName}|{c.Fraction:F2}|{c.Danger}|{CastPatch.ActiveCount}";
-            if (sig == _castDiagSig) return;
-            _castDiagSig = sig;
-
-            long elapsedMs = -1;
-            if (LastTargetUuid != 0 && CastPatch.TryGet(LastTargetUuid, out var e))
-                elapsedMs = Environment.TickCount64 - e.StartTick;
-
-            _services.Log.Info(
-                $"[CastDiag] uuid={LastTargetUuid} casting={c.Casting} skillId={c.SkillId} name='{c.SkillName}' " +
-                $"elapsed={c.ElapsedSec:F1}/{c.TotalSec:F1}s frac={c.Fraction:F2} danger={c.Danger} " +
-                $"elapsedMs={elapsedMs} activeCasters={CastPatch.ActiveCount} patched={CastPatch.Installed}");
-        }
-        catch { /* diagnostic must never throw */ }
     }
 }

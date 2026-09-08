@@ -60,14 +60,8 @@ internal static class CastPatch
     private static readonly Dictionary<long, CastEntry> _casts = new();
     private static int _version;   // bumped on every update so the tracker can gate a fresh event
 
-    /// <summary>True once the SetSingGuide postfix is installed (surfaced in [CastDiag] so we can confirm it fired).</summary>
+    /// <summary>True once the SetSingGuide postfix is installed.</summary>
     public static bool Installed { get; private set; }
-
-    /// <summary>Opt-in event logging (wired from the plugin's "Cast-bar diagnostic" toggle).</summary>
-    public static bool Diag;
-
-    /// <summary>Number of casters currently latched (for the diagnostic census).</summary>
-    public static int ActiveCount => _casts.Count;
 
     /// <summary>
     /// Latch lookup for the current target. Returns the live cast for <paramref name="casterUuid"/>, pruning it once
@@ -150,7 +144,6 @@ internal static class CastPatch
         _skillRowType = null;
         _piHost = _piUuid = null; _hostResolved = false;
         _loggedError = false;
-        _firstSetLogged = _firstBeginLogged = false;
     }
 
     // ── PRIMARY postfix: SetSingGuide(entity, value, maxValue, forward, type) ────────────────────────────────────
@@ -165,12 +158,6 @@ internal static class CastPatch
             if (__0 == null) return;
 
             long uuid = ReadEntityUuid(__0);
-
-            if (!_firstSetLogged)
-            {
-                _firstSetLogged = true;
-                _log?.Invoke($"[Cast] SetSingGuide FIRED uuid={uuid} val={__1:F2}/{__2:F2} fwd={__3} type={ToInt(__4)}");
-            }
             if (uuid == 0) return;
 
             bool  danger = ToInt(__4) == 2;   // ESingGuideType.MonsterDanger
@@ -207,13 +194,6 @@ internal static class CastPatch
             // Best-effort: read the caster's current skill id/name off the ZEntity so the overlay shows the real name
             // + icon. Never blocks the bar — a miss leaves SkillId=0/Name="" ("Casting…").
             if (skillId == 0) TryEnrichFromEntity(__0, uuid);
-
-            if (Diag)
-            {
-                int diagSkill = _casts.TryGetValue(uuid, out var d) ? d.SkillId : skillId;   // post-enrichment id
-                _log?.Invoke($"[CastDiag] set uuid={uuid} total={total:F2} fwd={__3} danger={danger} " +
-                             $"skillId={diagSkill} active={_casts.Count}");
-            }
         }
         catch (Exception ex) { LogError("set", ex); }
     }
@@ -252,12 +232,6 @@ internal static class CastPatch
             EnsureRefl(__instance.GetType());
 
             long uuid = GetHostUuid(__instance);
-
-            if (!_firstBeginLogged)
-            {
-                _firstBeginLogged = true;
-                _log?.Invoke($"[Cast] beginSingGuide FIRED uuid={uuid} skillId={ReadInt(_mCurSkillId, __instance)}");
-            }
             if (uuid == 0) return;
 
             int    skillId = ReadInt(_mCurSkillId, __instance);
@@ -280,9 +254,6 @@ internal static class CastPatch
                 };
             }
             _version++;
-
-            if (Diag)
-                _log?.Invoke($"[CastDiag] begin(enrich) uuid={uuid} skillId={skillId} name='{name}' active={_casts.Count}");
         }
         catch (Exception ex) { LogError("begin", ex); }
     }
@@ -455,8 +426,6 @@ internal static class CastPatch
     }
 
     private static bool _loggedError;
-    private static bool _firstSetLogged;
-    private static bool _firstBeginLogged;
 
     private static void LogError(string src, Exception ex)
     {
