@@ -83,7 +83,7 @@ internal sealed partial class TargetInfoTracker
             long localUuid = _services.CombatSnapshot.LocalEntityId.Value;
             if (localUuid == 0) return default;
 
-            long targetUuid = ReadTargetUuid(localUuid);
+            long targetUuid = _lockedUuid != 0 ? _lockedUuid : ReadTargetUuid(localUuid);
             if (targetUuid == 0 || targetUuid == localUuid) return default;
 
             var targetEnt = GetEntityObj(targetUuid);
@@ -156,6 +156,20 @@ internal sealed partial class TargetInfoTracker
                     }
                 }
                 catch { hasDist = false; }
+            }
+
+            // HUD lock lifecycle (display-only): release on death or after a grace if the entity despawns. Never touches
+            // the game's real target — we only stop READING this uuid.
+            if (_lockedUuid != 0)
+            {
+                if (targetEnt != null && maxHp > 0 && hp <= 0) { _lockedUuid = 0; _lockMissingSince = -1f; return default; } // dead → unlock, hide
+                if (targetEnt == null)
+                {
+                    if (_lockMissingSince < 0f) _lockMissingSince = Time.realtimeSinceStartup;
+                    if (Time.realtimeSinceStartup - _lockMissingSince > LockMissingGraceSec) { _lockedUuid = 0; _lockMissingSince = -1f; }
+                    return default; // hide while the locked entity is unresolvable (keeps the lock during a brief streaming gap)
+                }
+                _lockMissingSince = -1f; // alive & resolved
             }
 
             return new Snapshot(true, targetUuid, name, hp, maxHp, stunned, maxStunned, level, rank, configId, hasDist, dist);

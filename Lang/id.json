@@ -49,5 +49,9 @@
   "tl.mode.excludeSelected": "Tampilkan semua, kecuali yang dipilih",
   "tl.count.debuffs": "{0} / {1} debuff",
   "tl.count.buffs": "{0} / {1} buff",
-  "tl.group.variants": "×{0}"
+  "tl.group.variants": "×{0}",
+  "tl.notice.locked": "Target dikunci: {0}",
+  "tl.notice.unlocked": "Target dibuka",
+  "tl.notice.noTarget": "Tidak ada target untuk dikunci",
+  "tl.hotkey.lockTarget": "Kunci HUD ke target saat ini"
 }

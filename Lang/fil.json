@@ -49,5 +49,9 @@
   "tl.mode.excludeSelected": "Ipakita lahat, maliban sa mga napili",
   "tl.count.debuffs": "{0} / {1} na debuff",
   "tl.count.buffs": "{0} / {1} na buff",
-  "tl.group.variants": "×{0}"
+  "tl.group.variants": "×{0}",
+  "tl.notice.locked": "Naka-lock ang target: {0}",
+  "tl.notice.unlocked": "Na-unlock ang target",
+  "tl.notice.noTarget": "Walang target na ila-lock",
+  "tl.hotkey.lockTarget": "I-lock ang HUD sa kasalukuyang target"
 }

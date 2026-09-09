@@ -49,5 +49,9 @@
   "tl.mode.excludeSelected": "選択したものを除いてすべて表示",
   "tl.count.debuffs": "{0} / {1} デバフ",
   "tl.count.buffs": "{0} / {1} バフ",
-  "tl.group.variants": "×{0}"
+  "tl.group.variants": "×{0}",
+  "tl.notice.locked": "ターゲットをロック: {0}",
+  "tl.notice.unlocked": "ターゲットのロックを解除",
+  "tl.notice.noTarget": "ロックする対象がありません",
+  "tl.hotkey.lockTarget": "現在のターゲットにHUDをロック"
 }

@@ -49,5 +49,9 @@
   "tl.mode.excludeSelected": "Show all, exclude selected",
   "tl.count.debuffs": "{0} / {1} debuffs",
   "tl.count.buffs": "{0} / {1} buffs",
-  "tl.group.variants": "×{0}"
+  "tl.group.variants": "×{0}",
+  "tl.notice.locked": "Target locked: {0}",
+  "tl.notice.unlocked": "Target unlocked",
+  "tl.notice.noTarget": "No target to lock",
+  "tl.hotkey.lockTarget": "Lock HUD to current target"
 }

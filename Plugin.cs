@@ -23,6 +23,7 @@ public sealed partial class Plugin : IStellarPlugin
     private TargetInfoTracker _targetInfo = null!;   // constructed in the ctor, before the HUD is registered
     private TargetBuffTracker _targetBuff = null!;   // constructed in the ctor, right after _targetInfo
     private BossDbmTracker    _bossDbm    = null!;   // reads the game's DBM boss-skill countdown list (target-independent)
+    private IHotkeyAction     _lockAction = null!;   // rebindable hotkey: lock/unlock every overlay onto the current target
 
     // Theme muted-text colour helper (used by the moved Target HUD partials; copied from the old Plugin.FightRes.cs).
     private Func<ColorRgba?> MutedColor => () => (ColorRgba?)_services.Theme.Colors.TextMuted;
@@ -75,6 +76,14 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterSettings();
         RegisterSelectWindow();   // effect picker opened from the settings window's "Select effects…" button
 
+        // Rebindable hotkey to lock/unlock the HUD onto the current target (display-only — see Plugin.Lock.cs).
+        _lockAction = _services.Hotkeys.DeclareAction(
+            new HotkeyAction(
+                Id:               "targetlens.locktarget",
+                Description:      _loc.T("tl.hotkey.lockTarget"),
+                SuggestedDefault: new KeyBinding(StellarKeyCode.T, ModifierKeys.Alt)),
+            callback: ToggleHudLock);
+
         _services.Log.Info("[TargetLens] constructed");
     }
 
@@ -95,6 +104,7 @@ public sealed partial class Plugin : IStellarPlugin
         try { _services.Framework.Update -= OnTargetHudUpdate; } catch { }
         BuffTrackPatch.Uninstall();
         CastPatch.Uninstall();
+        try { _lockAction?.Dispose(); } catch { }
         _launcherEntry?.Dispose();
         _monIcon?.Dispose();
         foreach (var w in _windows) w.Remove();
