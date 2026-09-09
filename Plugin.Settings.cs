@@ -67,18 +67,6 @@ public sealed partial class Plugin
                         OnSelect: SetBuffStyle,
                         Width:    200f),
                 }, Gap: 6f),
-                // List-mode row-size slider (1.0–2.5x). Affects the List style only, so the row is shown ONLY while
-                // the display mode is List (_buffStyle == 1) — hidden for Classic (0) and Off (2); the predicate is
-                // re-evaluated each frame so switching the dropdown shows/hides it live. The drag itself only stashes
-                // the value + a readout; the buff-list window is rebuilt ONCE after the slider settles (SetListScale →
-                // TickListScaleRebuild), so a live drag never tears the window down. Readout mirrors CooldownBar's slider.
-                new ConditionalElement(() => _buffStyle == 1, new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.effectSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_listScale:0.0}x"),
-                    new SliderElement(() => _listScale, SetListScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f)),
                 // "Show effects title" — the List window's header row. Only meaningful in List mode (the title only
                 // exists there), so the row is gated the same as the effect-size slider above. Live via the title's
                 // ConditionalElement (no window rebuild).
@@ -91,6 +79,18 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showEffectTitle")),
+                }, Gap: 6f)),
+                // List-mode row-size slider (1.0–2.5x). Affects the List style only, so the row is shown ONLY while
+                // the display mode is List (_buffStyle == 1) — hidden for Classic (0) and Off (2); the predicate is
+                // re-evaluated each frame so switching the dropdown shows/hides it live. The drag itself only stashes
+                // the value + a readout; the buff-list window is rebuilt ONCE after the slider settles (SetListScale →
+                // TickListScaleRebuild), so a live drag never tears the window down. Readout mirrors CooldownBar's slider.
+                new ConditionalElement(() => _buffStyle == 1, new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.effectSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_listScale:0.0}x"),
+                    new SliderElement(() => _listScale, SetListScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
                 }, Gap: 6f)),
                 new RowElement(new HudElement[]
                 {
@@ -172,15 +172,6 @@ public sealed partial class Plugin
                         OnSelect: SetThreatMode,
                         Width:    200f),
                 }, Gap: 6f),
-                // Threat row-size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
-                // readout; the threat window is rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.threatSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_threatScale:0.0}x"),
-                    new SliderElement(() => _threatScale, SetThreatScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
                 // "Show aggro title" — the threat window's header row. Live via the title's ConditionalElement (no rebuild).
                 new RowElement(new HudElement[]
                 {
@@ -191,6 +182,15 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showThreatTitle")),
+                }, Gap: 6f),
+                // Threat row-size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
+                // readout; the threat window is rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.threatSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_threatScale:0.0}x"),
+                    new SliderElement(() => _threatScale, SetThreatScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
                 }, Gap: 6f),
 
                 // ── Cast Bar ─────────────────────────────────────────────────────
@@ -235,15 +235,6 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showBossTimers")),
                 }, Gap: 6f),
-                // Boss-timer size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
-                // readout; the boss-timer window is rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.bossTimerSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_bossTimerScale:0.0}x"),
-                    new SliderElement(() => _bossTimerScale, SetBossTimerScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
                 // "Show boss timers title" — the boss-timer window's header row. Live via the title's ConditionalElement (no rebuild).
                 new RowElement(new HudElement[]
                 {
@@ -254,6 +245,15 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showBossTimerTitle")),
+                }, Gap: 6f),
+                // Boss-timer size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
+                // readout; the boss-timer window is rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.bossTimerSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_bossTimerScale:0.0}x"),
+                    new SliderElement(() => _bossTimerScale, SetBossTimerScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
                 }, Gap: 6f),
             }, Gap: 8f),
             OnClose: () => _settingsWindow.SetVisible(false)));
