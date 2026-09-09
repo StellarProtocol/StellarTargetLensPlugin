@@ -32,7 +32,6 @@ public sealed partial class Plugin
     private const float BuffRowStride = 21f;                               // bar (18) + column gap (3); one row's vertical footprint
     private const int   BuffListNameBudget = 22;                          // name chars before it's ellipsised (leaves room for the time)
     private const string BuffListMarker    = "★ ";                         // leading "yours" marker on self-cast rows
-    private const int   BuffListMarkerWidth = 2;                          // BuffListMarker.Length — shave it off the name budget so the star doesn't grow the row
 
     // Buff base-ids that must resolve to their OWN table icon, bypassing the source-skill icon step below. These are
     // the boss enrage-TIMER buff family ("Power Sealed" and siblings) applied by a boss mechanic skill: each buff's
@@ -125,17 +124,20 @@ public sealed partial class Plugin
     }
 
     // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned time.
-    // Rows the local player cast get a leading "★ " (same star meaning as the classic tiles). The marker is
-    // prepended AFTER truncation against a budget already reduced by its width, so a mine row's name still fits
-    // in the bar exactly like a non-mine one — the star never pushes the name into the time.
+    // Prefixes, in order: "★ " (self-cast, same star meaning as the classic tiles) then "{Layer}x " when the effect
+    // has 2+ stacks (same Layer field the classic tiles badge with ×N; never shown for 0/1 so we don't print "1x").
+    // The full prefix is built FIRST, then the resolved name is truncated against a budget already reduced by the
+    // prefix width (clamped to a small minimum), so the markers can never push the name into the right-aligned time.
     private string BuffListName(int idx)
     {
         var list = CurEffects();
         if (idx >= list.Count) return "";
-        bool mine = BuffListIsMine(idx);
-        int budget = mine ? BuffListNameBudget - BuffListMarkerWidth : BuffListNameBudget;
+        string prefix = BuffListIsMine(idx) ? BuffListMarker : "";
+        int layer = list[idx].Layer;
+        if (layer >= 2) prefix += $"{layer}x ";
+        int budget = System.Math.Max(BuffListNameBudget - prefix.Length, 4);
         string name = Truncate(StripTags(ResolveEffectName(list[idx])), budget);
-        return mine ? BuffListMarker + name : name;
+        return prefix + name;
     }
 
     // Compact remaining time inside the bar (right): hours / minutes / seconds; permanent (RemainSec < 0) → blank.
