@@ -105,10 +105,11 @@ public sealed partial class Plugin
     // when it has no live entry (ConditionalElement on ThreatRowVisible), so short lists don't leave blank rows.
     // Row dimensions (name font, bar height + label font, bar cell width, gaps) scale together by _threatScale so
     // the list grows coherently; baked here at build time (SetThreatScale rebuilds the window to re-apply a change).
+    // The TITLE is intentionally kept at a fixed size (excluded from scaling) so only the per-player rows grow.
     private HudElement BuildThreatWindowRoot()
     {
         float sc       = _threatScale;
-        int   titlePx  = (int)System.Math.Round(14 * sc);
+        int   titlePx  = 14;   // fixed — title glyph does NOT scale with _threatScale (only the rows do)
         int   namePx   = (int)System.Math.Round(14 * sc);
         float barH     = 14f * sc;
         int   barFont  = (int)System.Math.Round(12 * sc);
