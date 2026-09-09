@@ -168,8 +168,10 @@ public sealed partial class Plugin
         int i = _dtOffset + idx;
         if (i >= _dtFiltCount) return "";
         int n = _dtFiltMembers[i].Length;
+        // Curated "recommended" groups get a ★ glyph prefix (not localized — it's a marker, not text).
+        string star = IsRecommendedGroup(_dtFiltMembers[i]) ? "★ " : "";
         // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
-        return n > 1 ? _dtFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _dtFiltNames[i];
+        return star + (n > 1 ? _dtFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _dtFiltNames[i]);
     }
 
     private bool DtTracked(int idx)
@@ -202,8 +204,10 @@ public sealed partial class Plugin
         int i = _btOffset + idx;
         if (i >= _btFiltCount) return "";
         int n = _btFiltMembers[i].Length;
+        // Curated "recommended" groups get a ★ glyph prefix (not localized — it's a marker, not text).
+        string star = IsRecommendedGroup(_btFiltMembers[i]) ? "★ " : "";
         // Same-name variants collapse into one row; show a ×N badge when the group has more than one id.
-        return n > 1 ? _btFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _btFiltNames[i];
+        return star + (n > 1 ? _btFiltNames[i] + "  " + _loc.TFormat("tl.group.variants", n) : _btFiltNames[i]);
     }
 
     private bool BtTracked(int idx)

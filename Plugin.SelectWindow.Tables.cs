@@ -176,16 +176,19 @@ public sealed partial class Plugin
             if (q.Length > 0 && srcNames[i].IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
             ri.Add(srcIds[i]); rn.Add(srcNames[i]); rd.Add(srcDescs[i]); rm.Add(srcMembers[i]);
         }
-        // Stable sort: fully-tracked groups float to the top.
+        // Stable three-tier sort, top to bottom: (1) fully-tracked groups, (2) curated "recommended" groups
+        // that are not fully tracked, (3) everything else. Within each tier the source (first-seen) order holds.
         var tId = new List<int>(); var tN = new List<string>(); var tD = new List<string>(); var tM = new List<int[]>();
+        var rcId = new List<int>(); var rcN = new List<string>(); var rcD = new List<string>(); var rcM = new List<int[]>();
         var xId = new List<int>(); var xN = new List<string>(); var xD = new List<string>(); var xM = new List<int[]>();
         for (int i = 0; i < ri.Count; i++)
         {
-            bool all = GroupAllTracked(rm[i], isTracked);
-            if (all) { tId.Add(ri[i]); tN.Add(rn[i]); tD.Add(rd[i]); tM.Add(rm[i]); }
-            else     { xId.Add(ri[i]); xN.Add(rn[i]); xD.Add(rd[i]); xM.Add(rm[i]); }
+            if (GroupAllTracked(rm[i], isTracked))    { tId.Add(ri[i]);  tN.Add(rn[i]);  tD.Add(rd[i]);  tM.Add(rm[i]); }
+            else if (IsRecommendedGroup(rm[i]))       { rcId.Add(ri[i]); rcN.Add(rn[i]); rcD.Add(rd[i]); rcM.Add(rm[i]); }
+            else                                      { xId.Add(ri[i]);  xN.Add(rn[i]);  xD.Add(rd[i]);  xM.Add(rm[i]); }
         }
-        tId.AddRange(xId); tN.AddRange(xN); tD.AddRange(xD); tM.AddRange(xM);
+        tId.AddRange(rcId); tN.AddRange(rcN); tD.AddRange(rcD); tM.AddRange(rcM);
+        tId.AddRange(xId);  tN.AddRange(xN);  tD.AddRange(xD);  tM.AddRange(xM);
         ids = tId.ToArray(); names = tN.ToArray(); descs = tD.ToArray(); members = tM.ToArray(); count = ids.Length;
     }
 
@@ -196,6 +199,22 @@ public sealed partial class Plugin
         if (members.Length == 0) return false;
         for (int i = 0; i < members.Length; i++) if (!isTracked(members[i])) return false;
         return true;
+    }
+
+    // Curated "recommended" buff/debuff base-ids (float to top of the picker + ★). By name:
+    // Rolora - Active Timer (2110135), Rolora - Spell (2110111),
+    // Power Seal (501706,501710,501714,995191), Power Sealed (501712), Power Release (501715),
+    // Wound (32201,44501,510571,873631,883113,2110026), Bleed (510573,829124).
+    private static readonly HashSet<int> RecommendedEffects = new()
+    { 2110135, 2110111, 501706, 501710, 501714, 995191, 501712, 501715,
+      32201, 44501, 510571, 873631, 883113, 2110026, 510573, 829124 };
+
+    // A group is "recommended" when ANY of its member ids is in the curated set (mirrors the group toggle's
+    // any/all split — recommendation is a hint, so a single curated variant lights the whole group).
+    private static bool IsRecommendedGroup(int[] members)
+    {
+        foreach (var m in members) if (RecommendedEffects.Contains(m)) return true;
+        return false;
     }
 
     // ── IL2CPP duck-typed enumerator ─────────────────────────────────────────
