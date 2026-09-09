@@ -19,6 +19,11 @@ public sealed partial class Plugin
     private bool           _castBarOn;               // config-backed: enable the cast-bar overlay (default ON)
     private UvRect         _castUv;                   // atlas rect for the current cast's skill icon (own slot)
 
+    // Cast-bar row-size multiplier. Baked into the element sizes + window dims at build time, so a live change
+    // re-registers the window (SetCastScale → RebuildCastBarWindow, debounced). Default 1.0 = unchanged.
+    private float          _castScale        = 1f;
+    private long           _castScaleDirtyAtMs = -1; // Environment.TickCount64 of the last slider change; -1 = idle
+
     // Cast bar reads best warm + centered: amber for a normal cast, red-orange for the danger variant. BarElement's
     // colour arg is a ColorRgba VALUE (no Func overload), so two mutually-exclusive bars carry the two colours,
     // gated by a ConditionalElement on the Danger flag — the same trick the break bar uses.
@@ -36,9 +41,13 @@ public sealed partial class Plugin
     {
         // Persisted toggle drives both initial visibility and the ShouldRender gate (default ON — user asked for it).
         _castBarOn = _cfg.Get<bool>("cast_bar_on", true);
+        // Row-size multiplier. Baked into the element sizes + window dims below, so a live change re-registers the
+        // window (SetCastScale → RebuildCastBarWindow). Clamped to the slider band.
+        _castScale = System.Math.Clamp(_cfg.Get<float>("cast_scale", 1f), 1f, 2.5f);
 
-        const float CastW = 340f;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
-        const float CastH = 34f;    // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
+        // Base (1×) dims scaled by _castScale so the single-row window grows with the bar (not resizable → no band).
+        float castW = 340f * _castScale;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
+        float castH = 34f  * _castScale;   // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=1377, y=120). Fixed 1440p-calibrated
         // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
@@ -50,7 +59,7 @@ public sealed partial class Plugin
             Spec: new WindowSpec(
                 Id:          "targetlens.castbar",
                 Title:       _loc.T("tl.window.castbar"),
-                DefaultRect: new WindowRect(x, y, CastW, CastH),
+                DefaultRect: new WindowRect(x, y, castW, castH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
             {
@@ -73,6 +82,39 @@ public sealed partial class Plugin
         _castBarWindow.SetVisible(_castBarOn);
     }
 
+    // Re-apply a new _castScale by rebuilding the window Root at the new scale (element sizes + window dims are baked
+    // at build time). Framework-sanctioned Remove()+Register() (mirrors RebuildBuffListWindow): preserve ONLY the
+    // rect — NOT IsShown (at a rebuild moment with no live cast it reads false and would strand the window off);
+    // RegisterCastBarWindow's SetVisible(_castBarOn) + the ShouldRender gate handle visibility.
+    private void RebuildCastBarWindow()
+    {
+        var rect = _castBarWindow.Rect;
+        _windows.Remove(_castBarWindow);
+        _castBarWindow.Remove();
+        RegisterCastBarWindow();
+        if (rect.Width > 0f) _castBarWindow.SetRect(rect);
+    }
+
+    // Cast-bar size slider handler: update _castScale live (knob + readout track the finger) and (re)arm the
+    // debounce; the deferred TickCastScaleRebuild does the single persist + rebuild once the drag settles.
+    private void SetCastScale(float v)
+    {
+        _castScale = v;
+        _castScaleDirtyAtMs = System.Environment.TickCount64;
+    }
+
+    // Per-frame (OnTargetHudUpdate) settle check: once the drag has been quiet for ListScaleSettleMs, persist the
+    // final value and rebuild the cast-bar window ONCE at the new scale (mirrors TickListScaleRebuild).
+    private void TickCastScaleRebuild()
+    {
+        if (_castScaleDirtyAtMs < 0) return;
+        if (System.Environment.TickCount64 - _castScaleDirtyAtMs < ListScaleSettleMs) return;
+        _castScaleDirtyAtMs = -1;
+        _cfg.Set<float>("cast_scale", _castScale);
+        _cfg.Save();
+        RebuildCastBarWindow();
+    }
+
     // Single row = [mini icon] [ count-UP bar: <skill name> ....... <percent> ], exactly the buff-list /
     // boss-timer row style (Plugin.BuffListWindow.cs / Plugin.BossTimerWindow.cs): the skill NAME sits inside-left
     // (ellipsised), the percent inside-right (SecondaryLabel), and the bar FILLS UP (the game's own fraction,
@@ -81,14 +123,23 @@ public sealed partial class Plugin
     // buff-list debuff/buff split uses).
     private HudElement BuildCastBarWindowRoot()
     {
+        // Icon px, icon cell width, bar height, name/time font, and the icon↔bar gap scale together by _castScale so
+        // the single row grows coherently; baked here at build time (SetCastScale rebuilds the window to re-apply).
+        float sc     = _castScale;
+        int   iconPx = (int)System.Math.Round(18 * sc);
+        float cellW  = 22f * sc;
+        float barH   = 18f * sc;
+        int   fontPx = (int)System.Math.Round(13 * sc);
+        float rowGap = 6f * sc;
+
         var normalBar = new BarElement(() => CastFraction(), CastNormalColor, () => CastNameLine())
         {
-            Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 13,
+            Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
             LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
         };
         var dangerBar = new BarElement(() => CastFraction(), CastDangerColor, () => CastNameLine())
         {
-            Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 13,
+            Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
             LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
         };
         return new ColumnElement(new HudElement[]
@@ -96,12 +147,12 @@ public sealed partial class Plugin
             new RowElement(new HudElement[]
             {
                 new CellElement(
-                    new GameTextureElement(() => GetCastIcon(), 18, 18, () => _castUv),
-                    Width: 22f),
+                    new GameTextureElement(() => GetCastIcon(), iconPx, iconPx, () => _castUv),
+                    Width: cellW),
                 new CellElement(
                     new ConditionalElement(() => CastCur().Danger, dangerBar, normalBar),
                     Weight: 1f),
-            }, Gap: 6f),
+            }, Gap: rowGap),
         }, Gap: 0f) { Padding = 8 };
     }
 

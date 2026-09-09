@@ -15,16 +15,25 @@ public sealed partial class Plugin
 {
     private IWindowControl _threatWindow = null!;   // registered in the ctor; auto-shows on target when show_threat is on
 
+    // Threat/Aggro row-size multiplier. Baked into the element sizes + the window's fixed W/H at build time, so a live
+    // change re-registers the window (SetThreatScale → RebuildThreatWindow, debounced). Default 1.0 = unchanged.
+    private float _threatScale        = 1f;
+    private long  _threatScaleDirtyAtMs = -1;   // Environment.TickCount64 of the last slider change; -1 = idle
+
     private void RegisterThreatWindow()
     {
         // Persisted toggle drives both the window's initial visibility and its ShouldRender gate.
         _showThreat = _cfg.Get<bool>("show_threat", true);
         // Persisted display mode: 0 = Top aggro (single top holder), 1 = Aggro List (default). Read by ThreatDisplay().
         _threatMode = _cfg.Get<int>("threat_mode", 1);
+        // Row-size multiplier. Baked into the element sizes + the fixed window dims below, so a live change
+        // re-registers the window (SetThreatScale → RebuildThreatWindow). Clamped to the slider band.
+        _threatScale = System.Math.Clamp(_cfg.Get<float>("threat_scale", 1f), 1f, 2.5f);
 
-        const float ThreatW = 260f;   // narrower than the Target HUD (name + a compact aggro bar + %)
-        // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.
-        const float ThreatH = 150f;
+        // Base (1×) dims scaled by _threatScale so the whole fixed-size window grows with the rows (this window is
+        // not resizable, so there is no band — the DefaultRect W/H simply scale).
+        float threatW = 260f * _threatScale;   // narrower than the Target HUD (name + a compact aggro bar + %)
+        float threatH = 150f * _threatScale;   // Title + ThreatSlots rows + gaps + padding (fixed; auto-fits)
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). Fixed 1440p-calibrated
         // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
@@ -36,7 +45,7 @@ public sealed partial class Plugin
             Spec: new WindowSpec(
                 Id:          "targetlens.threat",
                 Title:       _loc.T("tl.window.threat"),
-                DefaultRect: new WindowRect(x, y, ThreatW, ThreatH),
+                DefaultRect: new WindowRect(x, y, threatW, threatH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
             {
@@ -59,27 +68,71 @@ public sealed partial class Plugin
         _threatWindow.SetVisible(_showThreat);
     }
 
+    // Re-apply a new _threatScale by rebuilding the window Root at the new scale (element sizes + the fixed window
+    // dims are baked at build time). Framework-sanctioned Remove()+Register() (mirrors RebuildBuffListWindow):
+    // preserve ONLY the rect — NOT IsShown (at a rebuild moment with no live target it reads false and would strand
+    // the window off); RegisterThreatWindow's SetVisible(_showThreat) + the ShouldRender gate handle visibility.
+    private void RebuildThreatWindow()
+    {
+        var rect = _threatWindow.Rect;
+        _windows.Remove(_threatWindow);
+        _threatWindow.Remove();
+        RegisterThreatWindow();
+        if (rect.Width > 0f) _threatWindow.SetRect(rect);
+    }
+
+    // Threat row-size slider handler: update _threatScale live (knob + readout track the finger) and (re)arm the
+    // debounce; the deferred TickThreatScaleRebuild does the single persist + rebuild once the drag settles.
+    private void SetThreatScale(float v)
+    {
+        _threatScale = v;
+        _threatScaleDirtyAtMs = System.Environment.TickCount64;
+    }
+
+    // Per-frame (OnTargetHudUpdate) settle check: once the drag has been quiet for ListScaleSettleMs, persist the
+    // final value and rebuild the threat window ONCE at the new scale (mirrors TickListScaleRebuild).
+    private void TickThreatScaleRebuild()
+    {
+        if (_threatScaleDirtyAtMs < 0) return;
+        if (System.Environment.TickCount64 - _threatScaleDirtyAtMs < ListScaleSettleMs) return;
+        _threatScaleDirtyAtMs = -1;
+        _cfg.Set<float>("threat_scale", _threatScale);
+        _cfg.Save();
+        RebuildThreatWindow();
+    }
+
     // Title + a fixed pool of ThreatSlots rows (name + compact aggro bar + %). Each row collapses to zero height
     // when it has no live entry (ConditionalElement on ThreatRowVisible), so short lists don't leave blank rows.
+    // Row dimensions (name font, bar height + label font, bar cell width, gaps) scale together by _threatScale so
+    // the list grows coherently; baked here at build time (SetThreatScale rebuilds the window to re-apply a change).
     private HudElement BuildThreatWindowRoot()
     {
+        float sc       = _threatScale;
+        int   titlePx  = (int)System.Math.Round(14 * sc);
+        int   namePx   = (int)System.Math.Round(14 * sc);
+        float barH     = 14f * sc;
+        int   barFont  = (int)System.Math.Round(12 * sc);
+        float barCellW = 84f * sc;
+        float rowGap   = 6f * sc;
+        float colGap   = 3f * sc;
+
         var rows = new HudElement[ThreatSlots + 1];
-        rows[0] = new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: 14);
+        rows[0] = new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: titlePx);
         for (int s = 0; s < ThreatSlots; s++)
         {
             int idx = s;
             var row = new RowElement(new HudElement[]
             {
                 new CellElement(
-                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: 14, NoWrap: true),
+                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: namePx, NoWrap: true),
                     Weight: 1f),
                 new CellElement(
                     new BarElement(() => ThreatFraction(idx), ThreatFill, () => ThreatPct(idx))
-                    { Style = BarStyle.Modern, Height = 14f, FillWidth = true, LabelFontSize = 12, LabelInside = true },
-                    Width: 84f),
-            }, Gap: 6f);
+                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont, LabelInside = true },
+                    Width: barCellW),
+            }, Gap: rowGap);
             rows[s + 1] = new ConditionalElement(() => ThreatRowVisible(idx), row);
         }
-        return new ColumnElement(rows, Gap: 3f) { Padding = 8 };
+        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
     }
 }

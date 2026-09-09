@@ -159,6 +159,15 @@ public sealed partial class Plugin
                         OnSelect: SetThreatMode,
                         Width:    200f),
                 }, Gap: 6f),
+                // Threat row-size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
+                // readout; the threat window is rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.threatSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_threatScale:0.0}x"),
+                    new SliderElement(() => _threatScale, SetThreatScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
+                }, Gap: 6f),
 
                 // ── Cast Bar ─────────────────────────────────────────────────────
                 new SeparatorElement(),
@@ -176,6 +185,15 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showCastBar")),
                 }, Gap: 6f),
+                // Cast-bar size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
+                // readout; the cast-bar window is rebuilt ONCE after the slider settles (SetCastScale → TickCastScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.castSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_castScale:0.0}x"),
+                    new SliderElement(() => _castScale, SetCastScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
+                }, Gap: 6f),
 
                 // ── Boss Skill Timers ────────────────────────────────────────────
                 new SeparatorElement(),
@@ -192,6 +210,15 @@ public sealed partial class Plugin
                         _cfg.Save();
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showBossTimers")),
+                }, Gap: 6f),
+                // Boss-timer size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
+                // readout; the boss-timer window is rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.bossTimerSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_bossTimerScale:0.0}x"),
+                    new SliderElement(() => _bossTimerScale, SetBossTimerScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
                 }, Gap: 6f),
             }, Gap: 8f),
             OnClose: () => _settingsWindow.SetVisible(false)));

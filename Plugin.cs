@@ -79,11 +79,15 @@ public sealed partial class Plugin : IStellarPlugin
     }
 
     // Per-frame tick: re-assert the Target HUD tooltip's cursor rect after the destroy-on-hide remount, and drive the
-    // debounced List-scale slider (fires one buff-list rebuild after the drag settles — see TickListScaleRebuild).
+    // four debounced size sliders (each fires ONE window rebuild after its drag settles — see TickListScaleRebuild).
+    // One shared settle-tick path for every size slider rather than four framework subscriptions.
     private void OnTargetHudUpdate(float dt)
     {
         TickTargetTipPlace();
         TickListScaleRebuild();
+        TickThreatScaleRebuild();
+        TickCastScaleRebuild();
+        TickBossTimerScaleRebuild();
     }
 
     public void Dispose()
