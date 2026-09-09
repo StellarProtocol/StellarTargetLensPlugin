@@ -117,11 +117,16 @@ public sealed partial class Plugin
         float sc       = _threatScale;
         int   titlePx  = 14;   // fixed — title glyph does NOT scale with _threatScale (only the rows do)
         int   namePx   = (int)System.Math.Round(14 * sc);
-        float barH     = 14f * sc;
+        // barH matches the styled NAME cell's line box (the emphasis TextElement sets no preferredHeight, so it
+        // takes the TMP glyph's natural line box ≈ 18px at 14px font — taller than the old 14px bar). RowElement
+        // height = tallest child, so a shorter bar floated vertically-centred inside the taller name box, and that
+        // above/below whitespace read as extra inter-row gap. Sizing the bar to the name box (like the sibling
+        // Buff/Boss lists, which also use 18f*sc) makes each row one tight unit; colGap trimmed 3→2 for a touch more.
+        float barH     = 18f * sc;
         int   barFont  = (int)System.Math.Round(12 * sc);
         float barCellW = 84f * sc;
         float rowGap   = 6f * sc;
-        float colGap   = 3f * sc;
+        float colGap   = 2f * sc;
 
         var rows = new HudElement[ThreatSlots + 1];
         // Wrapped so the "Show aggro title" toggle collapses the header live (rows shift up; window keeps its size).
