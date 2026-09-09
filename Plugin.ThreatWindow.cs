@@ -133,7 +133,12 @@ public sealed partial class Plugin
             var row = new RowElement(new HudElement[]
             {
                 new CellElement(
-                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: namePx, NoWrap: true),
+                    // Emphasis:true routes the name through the framework's STYLED text path (TryBuildEmphasisText →
+                    // StyledSize), which honours TextElement.FontSize. The plain menu-surface text path
+                    // (WindowBuilder.BuildText) hardcodes Scaled(14) and DROPS FontSize entirely, so without this the
+                    // name never grew with _threatScale while the bar + % (bar LabelFontSize path) did. Bold also
+                    // matches the title's styling. (The bar labels don't need it — LabelFontSize is honoured directly.)
+                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: namePx, NoWrap: true, Emphasis: true),
                     Weight: 1f),
                 new CellElement(
                     new BarElement(() => ThreatFraction(idx), ThreatFill, () => ThreatPct(idx))
