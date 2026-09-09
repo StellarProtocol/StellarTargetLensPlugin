@@ -19,6 +19,8 @@ public sealed partial class Plugin
     {
         // Persisted toggle drives both the window's initial visibility and its ShouldRender gate.
         _showThreat = _cfg.Get<bool>("show_threat", true);
+        // Persisted display mode: 0 = Top aggro (single top holder), 1 = Aggro List (default). Read by ThreatDisplay().
+        _threatMode = _cfg.Get<int>("threat_mode", 1);
 
         const float ThreatW = 260f;   // narrower than the Target HUD (name + a compact aggro bar + %)
         // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.

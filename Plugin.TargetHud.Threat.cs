@@ -15,6 +15,18 @@ public sealed partial class Plugin
 {
     private bool _showThreat = true;   // config-backed: show the threat/aggro window (default ON)
 
+    // Threat display mode (config-backed, loaded in RegisterThreatWindow): 0 = Top aggro (only the single highest-threat
+    // holder), 1 = Aggro List (Top-N + the local player's own appended row — the default / original behaviour).
+    private int _threatMode = 1;
+
+    // Dropdown option order MUST match the mode ints above (index 0 = Top aggro, 1 = Aggro List). Built fresh from the
+    // loc catalog each call so the labels follow the active language (the dropdown's Options provider re-invokes it).
+    private string[] ThreatModeOptions() => new[]
+    {
+        _loc.T("tl.threatMode.top"),
+        _loc.T("tl.threatMode.list"),
+    };
+
     private const int   ThreatTopN   = 4;      // number of highest-aggro rows shown
     private const int   ThreatSlots   = ThreatTopN + 1; // + 1 for the local player's appended row
 
@@ -47,6 +59,16 @@ public sealed partial class Plugin
         _ = Cur;   // poll _targetInfo this frame so LastTargetEntity is fresh before the threat read
         if (_targetInfo.TryGetThreatList(out var full) && full.Count > 0)
         {
+            // Top-aggro mode (0): show ONLY the single highest-threat holder (list is already sorted DESC by HateVal,
+            // so full[0] is the top). No appended-local row — the local player still gets the gold highlight if they
+            // happen to be full[0] (ThreatRowColor keys off IsLocal, not position).
+            if (_threatMode == 0)
+            {
+                _threatDisp.Add(full[0]);
+                return _threatDisp;
+            }
+
+            // Aggro-list mode (1, default): Top-N + the local player's appended row when they fall outside the Top-N.
             int n = Math.Min(ThreatTopN, full.Count);
             bool localShown = false;
             for (int i = 0; i < n; i++)

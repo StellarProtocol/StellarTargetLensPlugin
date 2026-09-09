@@ -129,6 +129,15 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showThreat")),
                 }, Gap: 6f),
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.threatMode")),
+                    new DropdownElement(
+                        Selected: () => _threatMode,
+                        Options:  () => ThreatModeOptions(),
+                        OnSelect: SetThreatMode,
+                        Width:    200f),
+                }, Gap: 6f),
 
                 // ── Cast Bar ─────────────────────────────────────────────────────
                 new SeparatorElement(),
@@ -187,6 +196,16 @@ public sealed partial class Plugin
         _cfg.Set<int>("buff_style", style);
         _cfg.Save();
         _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic/Off → hide it
+    }
+
+    // Threat display-mode selector (0 = Top aggro = only the single top holder, 1 = Aggro List = Top-N + appended local).
+    // Persists and takes effect live — ThreatDisplay() reads _threatMode each frame, so the window's rows update on the
+    // next frame with no reload; row count collapses via the per-row ConditionalElement, so no window-size change.
+    private void SetThreatMode(int mode)
+    {
+        _threatMode = mode;
+        _cfg.Set<int>("threat_mode", mode);
+        _cfg.Save();
     }
 
     // Master "Show hidden effects" toggle. Persists, flips the tracker's list source (full vs display-filtered),
