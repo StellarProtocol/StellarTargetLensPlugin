@@ -78,8 +78,13 @@ public sealed partial class Plugin : IStellarPlugin
         _services.Log.Info("[TargetLens] constructed");
     }
 
-    // Per-frame tick for the Target HUD tooltip: re-assert its cursor rect after the destroy-on-hide remount.
-    private void OnTargetHudUpdate(float dt) => TickTargetTipPlace();
+    // Per-frame tick: re-assert the Target HUD tooltip's cursor rect after the destroy-on-hide remount, and drive the
+    // debounced List-scale slider (fires one buff-list rebuild after the drag settles — see TickListScaleRebuild).
+    private void OnTargetHudUpdate(float dt)
+    {
+        TickTargetTipPlace();
+        TickListScaleRebuild();
+    }
 
     public void Dispose()
     {

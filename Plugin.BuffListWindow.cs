@@ -79,20 +79,23 @@ public sealed partial class Plugin
         _buffListWindow.SetVisible(_buffStyle == 1);
     }
 
-    // Live re-apply of a new _listScale: the row element sizes are baked at build time, so a plain slider can't grow
-    // them mid-session — the window Root must be rebuilt. The framework-sanctioned Remove()+Register() pattern
-    // (mirrors CombatMeter's RebuildSkillBreakdownWindow): capture the current rect + visibility, drop the stale
-    // dispose-list entry, Remove() the old window, then RegisterBuffListWindow() re-registers into _buffListWindow +
-    // _windows at the new scale, and we restore the captured rect + visibility so position/size/shown are preserved.
+    // Re-apply a new _listScale: the row element sizes are baked at build time, so a plain slider can't grow them
+    // mid-session — the window Root must be rebuilt. The framework-sanctioned Remove()+Register() pattern (mirrors
+    // CombatMeter's RebuildSkillBreakdownWindow): capture the current rect, drop the stale dispose-list entry,
+    // Remove() the old window, then RegisterBuffListWindow() re-registers into _buffListWindow + _windows at the new
+    // scale, and we restore the captured rect so position/size are preserved.
+    //
+    // We deliberately do NOT capture and restore IsShown. IsShown is "visible AND currently mounted", so at a rebuild
+    // moment with no live target it reads false — restoring that would SetVisible(false) and leave the window OFF even
+    // after a target appears. This window's session-visibility is purely the List style, which RegisterBuffListWindow
+    // already sets (SetVisible(_buffStyle == 1)); the ShouldRender gate re-shows it whenever a target is live.
     private void RebuildBuffListWindow()
     {
-        var rect     = _buffListWindow.Rect;
-        var wasShown = _buffListWindow.IsShown;
+        var rect = _buffListWindow.Rect;
         _windows.Remove(_buffListWindow);   // drop the old control so Dispose doesn't Remove() it twice
         _buffListWindow.Remove();
-        RegisterBuffListWindow();           // reassigns _buffListWindow + re-adds to _windows
+        RegisterBuffListWindow();           // reassigns _buffListWindow + re-adds to _windows AND SetVisible(_buffStyle==1)
         if (rect.Width > 0f) _buffListWindow.SetRect(rect);
-        _buffListWindow.SetVisible(wasShown);
     }
 
     // Title + a fixed pool of BuffListSlots rows. Each row = [mini icon] [ time-bar ]. The bar is split into two

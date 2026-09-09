@@ -18,6 +18,15 @@ public sealed partial class Plugin
     private bool           _showHidden  = true;       // config-backed: list + show internal/no-icon buffs (default ON)
     private bool           _hidePermanent = true;     // config-backed: drop permanent / no-timer effects (default ON)
 
+    // Debounced List-scale rebuild. SliderElement exposes only a continuous Set (no release/commit callback), so a
+    // live drag fires SetListScale many times/sec. Rebuilding the buff-list window (Remove()+Register()) on EVERY
+    // tick tore it down continuously, so it appeared hidden for the whole drag. Instead each change stashes the new
+    // value + a timestamp; the per-frame tick (OnTargetHudUpdate → TickListScaleRebuild) fires ONE rebuild once the
+    // slider settles (~200ms after the last change ≈ mouse release). Mirrors the framework UI-scale slider, which
+    // also defers its canvas repack to release (ThemesPanel.PollEditorUgui), and Maestro's seek-debounce idiom.
+    private long           _listScaleDirtyAtMs = -1;  // Environment.TickCount64 of the last slider change; -1 = idle
+    private const long     ListScaleSettleMs   = 200; // quiet time after the last change before the single rebuild
+
     private void RegisterSettings()
     {
         _settingsWindow = _services.Windows.Register(new WindowRegistration(
@@ -58,15 +67,18 @@ public sealed partial class Plugin
                         OnSelect: SetBuffStyle,
                         Width:    200f),
                 }, Gap: 6f),
-                // List-mode row-size slider (1.0–2.5x). Affects the List style only; a live drag rebuilds the
-                // buff-list window at the new scale (SetListScale). Readout mirrors StellarCooldownBarPlugin's slider.
-                new RowElement(new HudElement[]
+                // List-mode row-size slider (1.0–2.5x). Affects the List style only, so the row is shown ONLY while
+                // the display mode is List (_buffStyle == 1) — hidden for Classic (0) and Off (2); the predicate is
+                // re-evaluated each frame so switching the dropdown shows/hides it live. The drag itself only stashes
+                // the value + a readout; the buff-list window is rebuilt ONCE after the slider settles (SetListScale →
+                // TickListScaleRebuild), so a live drag never tears the window down. Readout mirrors CooldownBar's slider.
+                new ConditionalElement(() => _buffStyle == 1, new RowElement(new HudElement[]
                 {
                     new TextElement(() => _loc.T("tl.label.effectSize")),
                     new SpacerElement(Width: 0f),
                     new TextElement(() => $"{_listScale:0.0}x"),
                     new SliderElement(() => _listScale, SetListScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
+                }, Gap: 6f)),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
@@ -207,14 +219,27 @@ public sealed partial class Plugin
         _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic/Off → hide it
     }
 
-    // Target Effects LIST row-size multiplier (List style only). Persists and takes effect LIVE by rebuilding the
-    // buff-list window Root at the new scale — the element sizes (icon, cell width, bar height, font, row stride) are
-    // baked at build time, so a plain value change wouldn't relayout mid-session. RebuildBuffListWindow preserves the
-    // window's current rect + visibility (framework-sanctioned Remove()+Register()). Classic tiles are untouched.
+    // Target Effects LIST row-size multiplier (List style only). The element sizes (icon, cell width, bar height,
+    // font, row stride) are baked into the window Root at build time, so applying a new scale needs a window rebuild
+    // (RebuildBuffListWindow) — but SliderElement has no release callback, so a drag calls this many times/sec.
+    // Rebuilding per tick tore the window down for the whole drag. Instead: update _listScale live so the knob + "x"
+    // readout track the finger, then (re)arm a debounce timestamp; the deferred TickListScaleRebuild does the single
+    // persist + rebuild once the drag settles (≈ on release). Classic tiles are untouched.
     private void SetListScale(float v)
     {
-        _listScale = v;
-        _cfg.Set<float>("list_scale", v);
+        _listScale = v;                                // live value → the slider knob + readout track the drag
+        _listScaleDirtyAtMs = Environment.TickCount64; // (re)arm; each change supersedes the prior pending rebuild
+    }
+
+    // Per-frame (OnTargetHudUpdate) settle check for the List-scale slider: once the drag has been quiet for
+    // ListScaleSettleMs, persist the final value and rebuild the buff-list window ONCE at the new scale. Persisting
+    // HERE (not on every drag frame) avoids a config write per tick and mirrors the framework's persist-on-release.
+    private void TickListScaleRebuild()
+    {
+        if (_listScaleDirtyAtMs < 0) return;
+        if (Environment.TickCount64 - _listScaleDirtyAtMs < ListScaleSettleMs) return;
+        _listScaleDirtyAtMs = -1;
+        _cfg.Set<float>("list_scale", _listScale);
         _cfg.Save();
         RebuildBuffListWindow();
     }
