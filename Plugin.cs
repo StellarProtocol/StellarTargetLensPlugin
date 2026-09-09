@@ -81,7 +81,7 @@ public sealed partial class Plugin : IStellarPlugin
             new HotkeyAction(
                 Id:               "targetlens.locktarget",
                 Description:      _loc.T("tl.hotkey.lockTarget"),
-                SuggestedDefault: new KeyBinding(StellarKeyCode.T, ModifierKeys.Alt)),
+                SuggestedDefault: null),   // no default chord — user binds it themselves in the launcher
             callback: ToggleHudLock);
 
         _services.Log.Info("[TargetLens] constructed");
