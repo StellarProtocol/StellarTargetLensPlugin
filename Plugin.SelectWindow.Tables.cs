@@ -204,10 +204,10 @@ public sealed partial class Plugin
     // Curated "recommended" buff/debuff base-ids (float to top of the picker + ★). By name:
     // Rolora - Active Timer (2110135), Rolora - Spell (2110111),
     // Power Seal (501706,501710,501714,995191), Power Sealed (501712), Power Release (501715),
-    // Wound (32201,44501,510571,873631,883113,2110026), Bleed (510573,829124).
+    // Wound (32201,44501,510571,873631,883113,2110026), Bleed (510573,829124), Weakened (829121).
     private static readonly HashSet<int> RecommendedEffects = new()
     { 2110135, 2110111, 501706, 501710, 501714, 995191, 501712, 501715,
-      32201, 44501, 510571, 873631, 883113, 2110026, 510573, 829124 };
+      32201, 44501, 510571, 873631, 883113, 2110026, 510573, 829124, 829121 };
 
     // A group is "recommended" when ANY of its member ids is in the curated set (mirrors the group toggle's
     // any/all split — recommendation is a hint, so a single curated variant lights the whole group).
