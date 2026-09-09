@@ -17,6 +17,10 @@ public sealed partial class Plugin
 {
     private IWindowControl _buffListWindow = null!;   // registered in the ctor; auto-shows on target while in List style
 
+    // Config-backed: show the "Target Effects" title row (List mode only; default ON). Read live each frame by the
+    // title's ConditionalElement, so the settings toggle hides/shows the header with no window rebuild.
+    private bool _showEffectTitle = true;
+
     private void RegisterBuffListWindow()
     {
         // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = List default).
@@ -24,6 +28,8 @@ public sealed partial class Plugin
         // Row-size multiplier (List only). Baked into the element sizes below, so a live change re-registers the
         // window (SetListScale → RebuildBuffListWindow). Clamped to the slider band so a stray config can't break layout.
         _listScale = System.Math.Clamp(_cfg.Get<float>("list_scale", 1f), 1f, 2.5f);
+        // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
+        _showEffectTitle = _cfg.Get<bool>("show_effect_title", true);
 
         const float ListW = 300f;                 // 1× min width — enough for a mini icon + a name + a compact time
         const float TitleReserve = 24f;           // title line + gap (matches BuffList.cs)
@@ -117,7 +123,9 @@ public sealed partial class Plugin
         float colGap  = 3f * sc;
 
         var rows = new HudElement[BuffListSlots + 1];
-        rows[0] = new TextElement(() => _loc.T("tl.window.bufflist"), Color: MutedColor, Emphasis: true, FontSize: 14);
+        // Wrapped so the "Show effects title" toggle collapses the header live (rows shift up; window keeps its size).
+        rows[0] = new ConditionalElement(() => _showEffectTitle,
+            new TextElement(() => _loc.T("tl.window.bufflist"), Color: MutedColor, Emphasis: true, FontSize: 14));
         for (int s = 0; s < BuffListSlots; s++)
         {
             int idx = s;

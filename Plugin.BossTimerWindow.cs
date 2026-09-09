@@ -28,6 +28,10 @@ public sealed partial class Plugin
     private float          _bossTimerScale        = 1f;
     private long           _bossTimerScaleDirtyAtMs = -1; // Environment.TickCount64 of the last slider change; -1 = idle
 
+    // Config-backed: show the "Boss Skill Timers" title row (default ON). Read live each frame by the title's
+    // ConditionalElement, so the settings toggle hides/shows the header with no window rebuild (rows shift up).
+    private bool           _showBossTimerTitle    = true;
+
     private const int BossTimerSlots = 8;              // fixed row pool (the game rarely lists more than a handful)
 
     // Warm amber like an incoming-danger schedule; a single colour (no debuff/buff split needed here).
@@ -40,6 +44,8 @@ public sealed partial class Plugin
         // Row-size multiplier. Baked into the element sizes + the locked height + the width band below, so a live
         // change re-registers the window (SetBossTimerScale → RebuildBossTimerWindow). Clamped to the slider band.
         _bossTimerScale = System.Math.Clamp(_cfg.Get<float>("bosstimer_scale", 1f), 1f, 2.5f);
+        // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
+        _showBossTimerTitle = _cfg.Get<bool>("show_bosstimer_title", true);
 
         float sc = _bossTimerScale;
         float TimerW = 300f * sc;   // default width tuned in-game (240–700 band at 1×): icon + name + MM:SS
@@ -137,7 +143,9 @@ public sealed partial class Plugin
         float colGap  = 3f * sc;
 
         var rows = new HudElement[BossTimerSlots + 1];
-        rows[0] = new TextElement(() => _loc.T("tl.window.bosstimer"), Color: MutedColor, Emphasis: true, FontSize: titlePx);
+        // Wrapped so the "Show boss timers title" toggle collapses the header live (rows shift up; window keeps its size).
+        rows[0] = new ConditionalElement(() => _showBossTimerTitle,
+            new TextElement(() => _loc.T("tl.window.bosstimer"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
         for (int s = 0; s < BossTimerSlots; s++)
         {
             int idx = s;

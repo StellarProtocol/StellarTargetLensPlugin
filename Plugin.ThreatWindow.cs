@@ -20,6 +20,10 @@ public sealed partial class Plugin
     private float _threatScale        = 1f;
     private long  _threatScaleDirtyAtMs = -1;   // Environment.TickCount64 of the last slider change; -1 = idle
 
+    // Config-backed: show the "Threat / Aggro" title row (default ON). Read live each frame by the title's
+    // ConditionalElement, so the settings toggle hides/shows the header with no window rebuild (rows shift up).
+    private bool  _showThreatTitle    = true;
+
     private void RegisterThreatWindow()
     {
         // Persisted toggle drives both the window's initial visibility and its ShouldRender gate.
@@ -29,6 +33,8 @@ public sealed partial class Plugin
         // Row-size multiplier. Baked into the element sizes + the fixed window dims below, so a live change
         // re-registers the window (SetThreatScale → RebuildThreatWindow). Clamped to the slider band.
         _threatScale = System.Math.Clamp(_cfg.Get<float>("threat_scale", 1f), 1f, 2.5f);
+        // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
+        _showThreatTitle = _cfg.Get<bool>("show_threat_title", true);
 
         // Base (1×) dims scaled by _threatScale so the whole fixed-size window grows with the rows (this window is
         // not resizable, so there is no band — the DefaultRect W/H simply scale).
@@ -118,7 +124,9 @@ public sealed partial class Plugin
         float colGap   = 3f * sc;
 
         var rows = new HudElement[ThreatSlots + 1];
-        rows[0] = new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: titlePx);
+        // Wrapped so the "Show aggro title" toggle collapses the header live (rows shift up; window keeps its size).
+        rows[0] = new ConditionalElement(() => _showThreatTitle,
+            new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
         for (int s = 0; s < ThreatSlots; s++)
         {
             int idx = s;
