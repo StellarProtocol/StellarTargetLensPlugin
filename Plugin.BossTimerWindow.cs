@@ -124,10 +124,11 @@ public sealed partial class Plugin
     // to zero height when they have no live entry (ConditionalElement on BossTimerRowVisible). Row dimensions (icon,
     // icon cell width, bar height, font, gaps) scale together by _bossTimerScale so the list grows coherently; baked
     // here at build time (SetBossTimerScale rebuilds the window to re-apply a change).
+    // The TITLE is intentionally kept at a fixed size (excluded from scaling) so only the rows grow.
     private HudElement BuildBossTimerWindowRoot()
     {
         float sc     = _bossTimerScale;
-        int   titlePx = (int)System.Math.Round(14 * sc);
+        int   titlePx = 14;   // fixed — title glyph does NOT scale with _bossTimerScale (only the rows do)
         int   iconPx  = (int)System.Math.Round(18 * sc);
         float cellW   = 22f * sc;
         float barH    = 18f * sc;
