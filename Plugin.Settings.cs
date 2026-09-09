@@ -58,6 +58,15 @@ public sealed partial class Plugin
                         OnSelect: SetBuffStyle,
                         Width:    200f),
                 }, Gap: 6f),
+                // List-mode row-size slider (1.0–2.5x). Affects the List style only; a live drag rebuilds the
+                // buff-list window at the new scale (SetListScale). Readout mirrors StellarCooldownBarPlugin's slider.
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.effectSize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_listScale:0.0}x"),
+                    new SliderElement(() => _listScale, SetListScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
+                }, Gap: 6f),
                 new RowElement(new HudElement[]
                 {
                     new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
@@ -196,6 +205,18 @@ public sealed partial class Plugin
         _cfg.Set<int>("buff_style", style);
         _cfg.Save();
         _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic/Off → hide it
+    }
+
+    // Target Effects LIST row-size multiplier (List style only). Persists and takes effect LIVE by rebuilding the
+    // buff-list window Root at the new scale — the element sizes (icon, cell width, bar height, font, row stride) are
+    // baked at build time, so a plain value change wouldn't relayout mid-session. RebuildBuffListWindow preserves the
+    // window's current rect + visibility (framework-sanctioned Remove()+Register()). Classic tiles are untouched.
+    private void SetListScale(float v)
+    {
+        _listScale = v;
+        _cfg.Set<float>("list_scale", v);
+        _cfg.Save();
+        RebuildBuffListWindow();
     }
 
     // Threat display-mode selector (0 = Top aggro = only the single top holder, 1 = Aggro List = Top-N + appended local).

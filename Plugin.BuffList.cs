@@ -17,6 +17,12 @@ public sealed partial class Plugin
     // Loaded in RegisterBuffListWindow (mirrors how _showThreat is loaded in RegisterThreatWindow).
     private int _buffStyle = 1;
 
+    // Target Effects LIST row-size multiplier (List style ONLY; Classic tiles ignore it). Scales the row's icon px,
+    // icon cell width, bar height, label font, and the row stride together so the list grows coherently. Loaded in
+    // RegisterBuffListWindow alongside _buffStyle; changed live via SetListScale, which rebuilds the window Root
+    // because the element sizes are baked at build time. Default 1.0 = unchanged.
+    private float _listScale = 1f;
+
     // Dropdown option order MUST match the style ints above (index 0 = Classic, 1 = List, 2 = Off).
     // Built fresh from the loc catalog each call so the labels follow the active language (the dropdown's
     // Options provider re-invokes it), not baked once at init.
@@ -29,7 +35,9 @@ public sealed partial class Plugin
 
     private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)
     private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
-    private const float BuffRowStride = 21f;                               // bar (18) + column gap (3); one row's vertical footprint
+    // bar (18) + column gap (3) at scale 1; one row's vertical footprint. Scaled by _listScale so the height-driven
+    // row count stays correct as rows grow — BuffListVisibleRows floors the window height by this stride.
+    private float BuffRowStride => 21f * _listScale;
     private const int   BuffListNameBudget = 22;                          // name chars before it's ellipsised (leaves room for the time)
     private const string BuffListMarker    = "★ ";                         // leading "yours" marker on self-cast rows
 

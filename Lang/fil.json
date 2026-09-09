@@ -5,6 +5,7 @@
   "tl.section.castBar": "Cast Bar",
   "tl.section.bossTimers": "Mga Timer ng Skill ng Boss",
   "tl.label.buffDisplay": "Display ng buff / debuff",
+  "tl.label.effectSize": "Laki ng Mga Epekto ng Target (Listahan)",
   "tl.toggle.showTargetHud": "Ipakita ang HUD ng HP ng Target",
   "tl.toggle.hidePermanent": "Itago ang mga permanenteng buff/debuff",
   "tl.toggle.showHidden": "Ipakita ang mga nakatagong buff/debuff",

@@ -5,6 +5,7 @@
   "tl.section.castBar": "詠唱バー",
   "tl.section.bossTimers": "ボススキルタイマー",
   "tl.label.buffDisplay": "バフ / デバフ表示",
+  "tl.label.effectSize": "ターゲット効果のサイズ（リスト）",
   "tl.toggle.showTargetHud": "ターゲットHPのHUDを表示",
   "tl.toggle.hidePermanent": "永続バフ / デバフを隠す",
   "tl.toggle.showHidden": "隠しバフ / デバフを表示",

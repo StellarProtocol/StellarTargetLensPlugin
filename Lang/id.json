@@ -5,6 +5,7 @@
   "tl.section.castBar": "Bilah Cast",
   "tl.section.bossTimers": "Pengatur Waktu Skill Bos",
   "tl.label.buffDisplay": "Tampilan buff / debuff",
+  "tl.label.effectSize": "Ukuran Efek Target (Daftar)",
   "tl.toggle.showTargetHud": "Tampilkan HUD HP Target",
   "tl.toggle.hidePermanent": "Sembunyikan buff/debuff permanen",
   "tl.toggle.showHidden": "Tampilkan buff/debuff tersembunyi",

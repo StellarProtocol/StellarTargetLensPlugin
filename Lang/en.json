@@ -5,6 +5,7 @@
   "tl.section.castBar": "Cast Bar",
   "tl.section.bossTimers": "Boss Skill Timers",
   "tl.label.buffDisplay": "Buff / debuff display",
+  "tl.label.effectSize": "Target Effects size (List)",
   "tl.toggle.showTargetHud": "Show Target HP HUD",
   "tl.toggle.hidePermanent": "Hide permanent buffs/debuffs",
   "tl.toggle.showHidden": "Show hidden buffs/debuffs",

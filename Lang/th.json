@@ -5,6 +5,7 @@
   "tl.section.castBar": "แถบร่ายเวท",
   "tl.section.bossTimers": "ตัวจับเวลาสกิลบอส",
   "tl.label.buffDisplay": "การแสดงบัฟ / ดีบัฟ",
+  "tl.label.effectSize": "ขนาดเอฟเฟกต์เป้าหมาย (รายการ)",
   "tl.toggle.showTargetHud": "แสดง HUD พลังชีวิตเป้าหมาย",
   "tl.toggle.hidePermanent": "ซ่อนบัฟ / ดีบัฟถาวร",
   "tl.toggle.showHidden": "แสดงบัฟ / ดีบัฟที่ซ่อนอยู่",
