@@ -15,14 +15,31 @@ public sealed partial class Plugin
 {
     private IWindowControl _threatWindow = null!;   // registered in the ctor; auto-shows on target when show_threat is on
 
+    // Threat/Aggro row-size multiplier. Baked into the element sizes + the window's fixed W/H at build time, so a live
+    // change re-registers the window (SetThreatScale → RebuildThreatWindow, debounced). Default 1.0 = unchanged.
+    private float _threatScale        = 1f;
+    private long  _threatScaleDirtyAtMs = -1;   // Environment.TickCount64 of the last slider change; -1 = idle
+
+    // Config-backed: show the "Threat / Aggro" title row (default ON). Read live each frame by the title's
+    // ConditionalElement, so the settings toggle hides/shows the header with no window rebuild (rows shift up).
+    private bool  _showThreatTitle    = true;
+
     private void RegisterThreatWindow()
     {
         // Persisted toggle drives both the window's initial visibility and its ShouldRender gate.
         _showThreat = _cfg.Get<bool>("show_threat", true);
+        // Persisted display mode: 0 = Top aggro (single top holder), 1 = Aggro List (default). Read by ThreatDisplay().
+        _threatMode = _cfg.Get<int>("threat_mode", 1);
+        // Row-size multiplier. Baked into the element sizes + the fixed window dims below, so a live change
+        // re-registers the window (SetThreatScale → RebuildThreatWindow). Clamped to the slider band.
+        _threatScale = System.Math.Clamp(_cfg.Get<float>("threat_scale", 1f), 1f, 2.5f);
+        // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
+        _showThreatTitle = _cfg.Get<bool>("show_threat_title", true);
 
-        const float ThreatW = 260f;   // narrower than the Target HUD (name + a compact aggro bar + %)
-        // Title + ThreatSlots rows (~20px each) + gaps + padding. Fixed height (not resizable) so it auto-fits.
-        const float ThreatH = 150f;
+        // Base (1×) dims scaled by _threatScale so the whole fixed-size window grows with the rows (this window is
+        // not resizable, so there is no band — the DefaultRect W/H simply scale).
+        float threatW = 260f * _threatScale;   // narrower than the Target HUD (name + a compact aggro bar + %)
+        float threatH = 150f * _threatScale;   // Title + ThreatSlots rows + gaps + padding (fixed; auto-fits)
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). Fixed 1440p-calibrated
         // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
@@ -34,7 +51,7 @@ public sealed partial class Plugin
             Spec: new WindowSpec(
                 Id:          "targetlens.threat",
                 Title:       _loc.T("tl.window.threat"),
-                DefaultRect: new WindowRect(x, y, ThreatW, ThreatH),
+                DefaultRect: new WindowRect(x, y, threatW, threatH),
                 Category:    WindowCategory.HUD,
                 Style:       WindowPanelStyle.Borderless)
             {
@@ -57,27 +74,84 @@ public sealed partial class Plugin
         _threatWindow.SetVisible(_showThreat);
     }
 
+    // Re-apply a new _threatScale by rebuilding the window Root at the new scale (element sizes + the fixed window
+    // dims are baked at build time). Framework-sanctioned Remove()+Register() (mirrors RebuildBuffListWindow):
+    // preserve ONLY the rect — NOT IsShown (at a rebuild moment with no live target it reads false and would strand
+    // the window off); RegisterThreatWindow's SetVisible(_showThreat) + the ShouldRender gate handle visibility.
+    private void RebuildThreatWindow()
+    {
+        var rect = _threatWindow.Rect;
+        _windows.Remove(_threatWindow);
+        _threatWindow.Remove();
+        RegisterThreatWindow();
+        if (rect.Width > 0f) _threatWindow.SetRect(rect);
+    }
+
+    // Threat row-size slider handler: update _threatScale live (knob + readout track the finger) and (re)arm the
+    // debounce; the deferred TickThreatScaleRebuild does the single persist + rebuild once the drag settles.
+    private void SetThreatScale(float v)
+    {
+        _threatScale = v;
+        _threatScaleDirtyAtMs = System.Environment.TickCount64;
+    }
+
+    // Per-frame (OnTargetHudUpdate) settle check: once the drag has been quiet for ListScaleSettleMs, persist the
+    // final value and rebuild the threat window ONCE at the new scale (mirrors TickListScaleRebuild).
+    private void TickThreatScaleRebuild()
+    {
+        if (_threatScaleDirtyAtMs < 0) return;
+        if (System.Environment.TickCount64 - _threatScaleDirtyAtMs < ListScaleSettleMs) return;
+        _threatScaleDirtyAtMs = -1;
+        _cfg.Set<float>("threat_scale", _threatScale);
+        _cfg.Save();
+        RebuildThreatWindow();
+    }
+
     // Title + a fixed pool of ThreatSlots rows (name + compact aggro bar + %). Each row collapses to zero height
     // when it has no live entry (ConditionalElement on ThreatRowVisible), so short lists don't leave blank rows.
+    // Row dimensions (name font, bar height + label font, bar cell width, gaps) scale together by _threatScale so
+    // the list grows coherently; baked here at build time (SetThreatScale rebuilds the window to re-apply a change).
+    // The TITLE is intentionally kept at a fixed size (excluded from scaling) so only the per-player rows grow.
     private HudElement BuildThreatWindowRoot()
     {
+        float sc       = _threatScale;
+        int   titlePx  = 14;   // fixed — title glyph does NOT scale with _threatScale (only the rows do)
+        int   namePx   = (int)System.Math.Round(14 * sc);
+        // barH matches the styled NAME cell's line box (the emphasis TextElement sets no preferredHeight, so it
+        // takes the TMP glyph's natural line box ≈ 18px at 14px font — taller than the old 14px bar). RowElement
+        // height = tallest child, so a shorter bar floated vertically-centred inside the taller name box, and that
+        // above/below whitespace read as extra inter-row gap. Sizing the bar to the name box (like the sibling
+        // Buff/Boss lists, which also use 18f*sc) makes each row one tight unit; colGap trimmed 3→2 for a touch more.
+        float barH     = 18f * sc;
+        int   barFont  = (int)System.Math.Round(12 * sc);
+        float barCellW = 84f * sc;
+        float rowGap   = 6f * sc;
+        float colGap   = 2f * sc;
+
         var rows = new HudElement[ThreatSlots + 1];
-        rows[0] = new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: 14);
+        // Wrapped so the "Show aggro title" toggle collapses the header live (rows shift up; window keeps its size).
+        rows[0] = new ConditionalElement(() => _showThreatTitle,
+            new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
         for (int s = 0; s < ThreatSlots; s++)
         {
             int idx = s;
             var row = new RowElement(new HudElement[]
             {
                 new CellElement(
-                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: 14, NoWrap: true),
+                    // Emphasis:true routes the name through the framework's STYLED text path (TryBuildEmphasisText →
+                    // StyledSize), which honours TextElement.FontSize. The plain menu-surface text path
+                    // (WindowBuilder.BuildText) hardcodes Scaled(14) and DROPS FontSize entirely, so without this the
+                    // name never grew with _threatScale while the bar + % (bar LabelFontSize path) did. Bold also
+                    // matches the title's styling. (The bar labels don't need it — LabelFontSize is honoured directly.)
+                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: namePx, NoWrap: true, Emphasis: true),
                     Weight: 1f),
                 new CellElement(
                     new BarElement(() => ThreatFraction(idx), ThreatFill, () => ThreatPct(idx))
-                    { Style = BarStyle.Modern, Height = 14f, FillWidth = true, LabelFontSize = 12, LabelInside = true },
-                    Width: 84f),
-            }, Gap: 6f);
+                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont, LabelInside = true },
+                    Width: barCellW),
+            }, Gap: rowGap);
             rows[s + 1] = new ConditionalElement(() => ThreatRowVisible(idx), row);
         }
-        return new ColumnElement(rows, Gap: 3f) { Padding = 8 };
+        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
     }
 }

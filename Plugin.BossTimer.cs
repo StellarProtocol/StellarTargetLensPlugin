@@ -59,9 +59,13 @@ public sealed partial class Plugin
     // ~22 chars — the same as the old fixed BuffListNameBudget, so the default look is unchanged.
     private int BossTimerNameBudget()
     {
+        // The overhead reserve (icon cell + gaps + MM:SS) and the per-char pixel width both scale with the row-size
+        // multiplier, so divide the scaled available width by the scaled char width — the visible char count then
+        // stays proportional across scales. At sc == 1 this is identical to the old (w − 92) / 7.6 (no default change).
+        float sc = _bossTimerScale;
         float w = _bossTimerWindow != null ? _bossTimerWindow.Rect.Width : 0f;
-        if (w < 1f) w = 260f;                                   // pre-mount fallback = default width
-        int budget = (int)((w - 92f) / 7.6f);
+        if (w < 1f) w = 300f * sc;                             // pre-mount fallback = default width at the current scale
+        int budget = (int)((w - 92f * sc) / (7.6f * sc));
         return System.Math.Clamp(budget, 8, 80);
     }
 

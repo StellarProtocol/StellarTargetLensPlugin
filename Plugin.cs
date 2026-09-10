@@ -23,6 +23,7 @@ public sealed partial class Plugin : IStellarPlugin
     private TargetInfoTracker _targetInfo = null!;   // constructed in the ctor, before the HUD is registered
     private TargetBuffTracker _targetBuff = null!;   // constructed in the ctor, right after _targetInfo
     private BossDbmTracker    _bossDbm    = null!;   // reads the game's DBM boss-skill countdown list (target-independent)
+    private IHotkeyAction     _lockAction = null!;   // rebindable hotkey: lock/unlock every overlay onto the current target
 
     // Theme muted-text colour helper (used by the moved Target HUD partials; copied from the old Plugin.FightRes.cs).
     private Func<ColorRgba?> MutedColor => () => (ColorRgba?)_services.Theme.Colors.TextMuted;
@@ -75,17 +76,35 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterSettings();
         RegisterSelectWindow();   // effect picker opened from the settings window's "Select effects…" button
 
+        // Rebindable hotkey to lock/unlock the HUD onto the current target (display-only — see Plugin.Lock.cs).
+        _lockAction = _services.Hotkeys.DeclareAction(
+            new HotkeyAction(
+                Id:               "targetlens.locktarget",
+                Description:      _loc.T("tl.hotkey.lockTarget"),
+                SuggestedDefault: null),   // no default chord — user binds it themselves in the launcher
+            callback: ToggleHudLock);
+
         _services.Log.Info("[TargetLens] constructed");
     }
 
-    // Per-frame tick for the Target HUD tooltip: re-assert its cursor rect after the destroy-on-hide remount.
-    private void OnTargetHudUpdate(float dt) => TickTargetTipPlace();
+    // Per-frame tick: re-assert the Target HUD tooltip's cursor rect after the destroy-on-hide remount, and drive the
+    // four debounced size sliders (each fires ONE window rebuild after its drag settles — see TickListScaleRebuild).
+    // One shared settle-tick path for every size slider rather than four framework subscriptions.
+    private void OnTargetHudUpdate(float dt)
+    {
+        TickTargetTipPlace();
+        TickListScaleRebuild();
+        TickThreatScaleRebuild();
+        TickCastScaleRebuild();
+        TickBossTimerScaleRebuild();
+    }
 
     public void Dispose()
     {
         try { _services.Framework.Update -= OnTargetHudUpdate; } catch { }
         BuffTrackPatch.Uninstall();
         CastPatch.Uninstall();
+        try { _lockAction?.Dispose(); } catch { }
         _launcherEntry?.Dispose();
         _monIcon?.Dispose();
         foreach (var w in _windows) w.Remove();
