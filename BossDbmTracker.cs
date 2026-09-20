@@ -98,7 +98,13 @@ internal sealed class BossDbmTracker
             for (int i = 0; i < ids.Length; i++)
             {
                 int id = ids[i];
-                if (!TryGetDbmRow(id, out string name, out int cdSec)) { name = $"#{id}"; cdSec = 0; }
+                // A real boss DBM skill ALWAYS resolves to a DbmTable row with a non-empty Content name and
+                // CountCDTime > 0. Anything else (a small non-DbmId like 1/12, or a row that hasn't loaded yet) is
+                // NOT a boss skill → skip it, never latch a placeholder. Batches are full-set and re-pushed each
+                // server update, so a real id that transiently missed (config table not yet loaded) self-heals on
+                // the next push — and the old placeholder path was broken for those anyway (durMs=0 → instant expire).
+                if (!TryGetDbmRow(id, out string name, out int cdSec) || cdSec <= 0 || string.IsNullOrEmpty(name))
+                    continue;
                 long durMs = (long)cdSec * 1000L;               // CountCDTime is SECONDS → ×1000 to the ms clock
                 _latch[id] = (startTime, durMs, name);          // overwrite → a re-armed skill's new startTime refreshes it
             }
@@ -118,7 +124,7 @@ internal sealed class BossDbmTracker
             float remain = (beginMs + durMs - now) / 1000f;
             if (remain <= 0f) { _expired.Add(kv.Key); continue; }   // genuinely expired → remove after the loop
             float total = durMs / 1000f;
-            _current.Add(new DbmEntry(kv.Key, string.IsNullOrEmpty(name) ? $"#{kv.Key}" : name, remain, total));
+            _current.Add(new DbmEntry(kv.Key, name, remain, total));   // name is guaranteed non-empty (Phase 1 skips unresolved ids)
         }
         for (int i = 0; i < _expired.Count; i++) _latch.Remove(_expired[i]);
 
