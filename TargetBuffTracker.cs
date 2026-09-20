@@ -234,7 +234,7 @@ internal sealed class TargetBuffTracker
         if (durMs <= 0) return -1f;                         // permanent → no timer
         if (createMs > 0)
         {
-            long now = ServerNowMs();
+            long now = _services.CombatSnapshot.ServerNowMs;   // framework clock; 0 until first server-time observation
             // Sanity-gate the clock: a real synced server time is a large Unix-epoch ms value. A tiny/zero value
             // means pre-sync or unavailable → don't trust it, fall back to full duration.
             if (now >= 1_600_000_000_000L)                  // ≈ 2020-09; below this = not a valid server clock
@@ -323,32 +323,13 @@ internal sealed class TargetBuffTracker
         _services.Log.Info($"[TargetBuff] comp refl: buffComp={_piBuffComp != null} clientComp={_piClientBuffComp != null}");
     }
 
-    // ── Server clock (for true buff remaining = CreateTime + Duration − serverNow) ──
-    private bool        _serverTimeResolved;
-    private object?     _serverTimeInst;
-    private MethodInfo? _miGetServerTime;
-
-    // Current server time in ms (Unix-epoch, same clock as BuffItem.CreateTime/Duration). 0 = unavailable.
-    // Lazy-retry the singleton instance while it's still null (mirrors ResolveEntityMgr/GetPlayerUuid) so a
-    // frame-1 miss — before the singleton is up — doesn't permanently disable the feature; the method-info caches.
-    private long ServerNowMs()
-    {
-        if (!_serverTimeResolved)
-        {
-            var t = StellarInterop.FindType("Panda.Utility.ZServerTime");
-            if (t == null) { _serverTimeResolved = true; return 0L; }   // type gone → give up permanently
-            _serverTimeInst  ??= StellarInterop.GetSingleton(t);
-            _miGetServerTime ??= t.GetMethod("GetServerTime", BindingFlags.Public | BindingFlags.Instance);
-            if (_serverTimeInst != null)
-            {
-                _serverTimeResolved = true;   // latch only once the instance actually resolves
-                _services.Log.Info($"[TargetBuff] serverTime: inst=True m={_miGetServerTime != null}");
-            }
-        }
-        if (_serverTimeInst == null || _miGetServerTime == null) return 0L;
-        try { return (long)(_miGetServerTime.Invoke(_serverTimeInst, null) ?? 0L); }
-        catch { return 0L; }
-    }
+    // ── Server clock ──
+    // True buff remaining = CreateTime + Duration − serverNow. The clock is the framework's own server-time source
+    // (_services.CombatSnapshot.ServerNowMs — Unix-epoch ms, same domain as BuffItem.CreateTime/Duration), read
+    // directly at the call site in ComputeSnapRemain. We do NOT reach into the game's Panda.Utility.ZServerTime
+    // singleton: that instance backs the game's own ping/latency HUD, and touching it per-frame via reflection
+    // stalls the HUD's delay readout (it reads a constant 0ms). The framework clock returns 0 until the first
+    // server-time observation — the same "0 = unavailable" contract the caller already sanity-gates for.
 
     private bool          _showedResolved;
     private PropertyInfo? _piFullList;     // pBuffList_ / buffList_        — unfiltered  (ShowHidden ON)

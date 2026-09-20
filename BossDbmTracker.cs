@@ -26,7 +26,7 @@ namespace Stellar.TargetLens;
 /// <para>Each captured id is UPSERTED into a persistent latch keyed by DbmId (name + begin + duration cached), and
 /// the display is driven from the latch — entries count smoothly to 0 and are dropped ONLY when they genuinely
 /// expire (remain ≤ 0). This survives both full-set pushes (the common case) and any push that momentarily omits a
-/// mid-countdown skill. Server clock reuses the gated <c>ZServerTime.GetServerTime</c> read (≈2020 sanity floor);
+/// mid-countdown skill. Server clock is the framework's own <c>CombatSnapshot.ServerNowMs</c> (≈2020 sanity floor);
 /// an untrusted/zero clock returns the last-built list rather than garbage countdowns. Everything is frame-cached
 /// and guarded — one read per frame, never throws.</para>
 /// </summary>
@@ -85,7 +85,7 @@ internal sealed class BossDbmTracker
     {
         DbmPatch.GetBatch(out var ids, out var startTime, out var version);
 
-        long now = ServerNowMs();
+        long now = _services.CombatSnapshot.ServerNowMs;   // framework clock; 0 until first server-time observation
         // Sanity-gate the clock: a real synced server time is a large Unix-epoch ms value. A tiny/zero value means
         // pre-sync or unavailable → we can't compute a meaningful countdown this frame.
         bool clockOk = now >= 1_600_000_000_000L;
@@ -186,27 +186,13 @@ internal sealed class BossDbmTracker
         return _miTryGetValue != null;
     }
 
-    // ── Server clock (duplicated from TargetBuffTracker.ServerNowMs — same gated ZServerTime read) ──────────
-    private bool        _serverTimeResolved;
-    private object?     _serverTimeInst;
-    private MethodInfo? _miGetServerTime;
-
-    // Current server time in ms (Unix-epoch, same clock as the DBM startTime anchor). 0 = unavailable. Lazy-retry
-    // the singleton while still null (a frame-1 miss before the singleton is up mustn't permanently disable this).
-    private long ServerNowMs()
-    {
-        if (!_serverTimeResolved)
-        {
-            var t = StellarInterop.FindType("Panda.Utility.ZServerTime");
-            if (t == null) { _serverTimeResolved = true; return 0L; }
-            _serverTimeInst  ??= StellarInterop.GetSingleton(t);
-            _miGetServerTime ??= t.GetMethod("GetServerTime", BindingFlags.Public | BindingFlags.Instance);
-            if (_serverTimeInst != null) _serverTimeResolved = true;   // latch only once the instance resolves
-        }
-        if (_serverTimeInst == null || _miGetServerTime == null) return 0L;
-        try { return (long)(_miGetServerTime.Invoke(_serverTimeInst, null) ?? 0L); }
-        catch { return 0L; }
-    }
+    // ── Server clock ──
+    // The DBM countdown anchor (startTime) is server-epoch ms, so we compare it against the framework's own
+    // server-time source (_services.CombatSnapshot.ServerNowMs — same Unix-epoch ms domain), read directly in
+    // Refresh. We deliberately do NOT reach into the game's Panda.Utility.ZServerTime singleton: that instance
+    // backs the game's ping/latency HUD, and touching it per-frame via reflection stalls that HUD's delay readout
+    // (it reads a constant 0ms). The framework clock returns 0 until the first server-time observation — the same
+    // "0 = unavailable" contract Refresh's clockOk gate already handles.
 
     private bool _loggedError;
 
