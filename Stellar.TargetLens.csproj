@@ -10,7 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Stellar.TargetLens</RootNamespace>
     <AssemblyName>Stellar.TargetLens</AssemblyName>
-    <Version>2.0.0</Version>
+    <Version>1.1.1</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
