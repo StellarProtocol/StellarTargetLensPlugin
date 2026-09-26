@@ -255,6 +255,43 @@ public sealed partial class Plugin
                     new TextElement(() => $"{_bossTimerScale:0.0}x"),
                     new SliderElement(() => _bossTimerScale, SetBossTimerScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
                 }, Gap: 6f),
+
+                // ── Nearby Monsters ──────────────────────────────────────────────
+                new SeparatorElement(),
+                new TextElement(() => _loc.T("tl.section.nearby"), Emphasis: true),
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _nearbyOn, Set: v =>
+                    {
+                        // The nearby-monster list is its own window, so the toggle takes full effect live: flip the
+                        // window's visibility straight away (no reserved-height reload caveat).
+                        _nearbyOn = v;
+                        _nearbyWindow.SetVisible(v);
+                        _cfg.Set<bool>("nearby_on", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => _loc.T("tl.toggle.showNearby")),
+                }, Gap: 6f),
+                // "Show nearby list title" — the nearby window's header row. Live via the title's ConditionalElement (no rebuild).
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _showNearbyTitle, Set: v =>
+                    {
+                        _showNearbyTitle = v;
+                        _cfg.Set<bool>("show_nearby_title", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => _loc.T("tl.toggle.showNearbyTitle")),
+                }, Gap: 6f),
+                // Nearby-list size slider (1.0–2.5x). The drag stashes the value + readout; the nearby window is
+                // rebuilt ONCE after the slider settles (SetNearbyScale → TickNearbyScaleRebuild).
+                new RowElement(new HudElement[]
+                {
+                    new TextElement(() => _loc.T("tl.label.nearbySize")),
+                    new SpacerElement(Width: 0f),
+                    new TextElement(() => $"{_nearbyScale:0.0}x"),
+                    new SliderElement(() => _nearbyScale, SetNearbyScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
+                }, Gap: 6f),
             }, Gap: 8f),
             OnClose: () => _settingsWindow.SetVisible(false)));
         _windows.Add(_settingsWindow);   // Dispose already loops _windows and Remove()s each
