@@ -26,17 +26,27 @@ public sealed partial class Plugin
         new(4, "Scurrying Vermin",  140,   300, 38f, "Normal"),
     };
 
+    // Called from the window's ShouldRender AND every row Func, i.e. straight off the framework render loop — so it
+    // is fully guarded: on ANY throw it returns the LAST good list (never propagates into the render loop, which is
+    // the surface the "all HUDs freeze" regression corrupts). The tracker's Poll is already throttled + guarded.
     private IReadOnlyList<NearbyMonsterTracker.NearbyEntry> NearbyDisplay()
     {
         int f = Time.frameCount;
         if (f == _nearbyDispFrame) return _nearbyDisp;
-        _nearbyDispFrame = f;
-        _nearbyDisp.Clear();
-
-        var live = _nearby.Current;
-        if (live.Count > 0) { _nearbyDisp.AddRange(live); return _nearbyDisp; }
-        if (_services.Windows.IsLayoutEditing) _nearbyDisp.AddRange(ExampleNearby);
-        return _nearbyDisp;
+        try
+        {
+            var live = _nearby.Current;   // may resolve a (throttled) poll — do this BEFORE touching _nearbyDisp
+            _nearbyDispFrame = f;
+            _nearbyDisp.Clear();
+            if (live.Count > 0) { _nearbyDisp.AddRange(live); return _nearbyDisp; }
+            if (_services.Windows.IsLayoutEditing) _nearbyDisp.AddRange(ExampleNearby);
+            return _nearbyDisp;
+        }
+        catch
+        {
+            _nearbyDispFrame = f;      // mark done so we don't retry-thrash the throw within this frame
+            return _nearbyDisp;         // last good list (or empty) — nothing escapes into the render loop
+        }
     }
 
     private bool NearbyRowVisible(int idx) => idx < NearbyDisplay().Count;

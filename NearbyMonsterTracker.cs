@@ -44,6 +44,13 @@ internal sealed partial class NearbyMonsterTracker
 
     private const int   MaxRows      = 8;    // top-N cap (fixed row pool in the window)
     private const float MaxDistanceM = 60f;  // hide anything beyond ~60 m; unknown distance is excluded entirely
+    private const int   BigCandidateWarn = 500;  // an abnormally large scanned-candidate set → log a one-line fingerprint once
+
+    // Diagnostic state (rate-limited — never per-frame). A change in the local entity uuid marks a (re)login /
+    // char-select / world-enter / scene resolve; we log the first poll after each, and once per resolve if the
+    // scanned candidate set is abnormally large (the prime suspect for the HUD-freeze regression).
+    private long _diagLastLocalUuid;
+    private bool _bigCandidateLogged;
 
     private readonly IPluginServices _services;
     public NearbyMonsterTracker(IPluginServices services) => _services = services;
@@ -52,13 +59,25 @@ internal sealed partial class NearbyMonsterTracker
     private int                    _cacheFrame = -1;
     private readonly List<NearbyEntry> _cache  = new();
 
+    // Time-throttle ON TOP of the per-frame gate. The reflection walk over MonsterDict ∪ BossDict is heavy in a
+    // dungeon (many entities × several reflective invokes each), and re-running it every rendered frame while a
+    // scene/dungeon/teleport churns the entity set can stall the shared window canvas → every TargetLens HUD
+    // appears to freeze (the confirmed Nearby-only, exception-free regression — no throw, just a slow main thread).
+    // So poll at most once per PollIntervalMs; between polls the last good _cache is reused verbatim.
+    // CurrentTargetUuid refreshes at the same ~6.7 Hz cadence — ample for the row highlight.
+    private const long PollIntervalMs = 150;
+    private long       _lastPollMs     = 0;   // Environment.TickCount64 of the last real Poll; 0 = never (uptime ≫ interval ⇒ first frame polls)
+
     public IReadOnlyList<NearbyEntry> Current
     {
         get
         {
             int f = Time.frameCount;
-            if (f == _cacheFrame) return _cache;
+            if (f == _cacheFrame) return _cache;   // one resolve per rendered frame
             _cacheFrame = f;
+            long now = Environment.TickCount64;
+            if (now - _lastPollMs < PollIntervalMs) return _cache;   // throttle: reuse the last good list between polls
+            _lastPollMs = now;
             Poll();
             return _cache;
         }
@@ -93,8 +112,9 @@ internal sealed partial class NearbyMonsterTracker
 
             _scratch.Clear();
             _seen.Clear();
-            AccumulateDict(mgr, _dictReader, localUuid, localPos, localEnt);   // MonsterDict
-            AccumulateDict(mgr, _bossReader, localUuid, localPos, localEnt);   // BossDict (union — a boss may not be in MonsterDict)
+            int candidates = 0;
+            candidates += AccumulateDict(mgr, _dictReader, localUuid, localPos, localEnt);   // MonsterDict
+            candidates += AccumulateDict(mgr, _bossReader, localUuid, localPos, localEnt);   // BossDict (union — a boss may not be in MonsterDict)
 
             // Bosses first, then elites, then normal; within a tier by ascending distance. Then cap at MaxRows.
             _scratch.Sort((a, b) =>
@@ -105,6 +125,22 @@ internal sealed partial class NearbyMonsterTracker
             });
             int n = Math.Min(MaxRows, _scratch.Count);
             for (int i = 0; i < n; i++) _cache.Add(_scratch[i]);
+
+            // Rate-limited fingerprint for the "HUDs freeze after a scene/dungeon/teleport" regression. Log the
+            // FIRST poll after the local entity re-resolves (relogin / char-select / world-enter / scene change),
+            // and once per resolve if the scanned set is abnormally large — a big walk is the prime suspect for a
+            // main-thread stall. Never per-frame (guarded by the resolve latch + the one-shot flag).
+            if (localUuid != _diagLastLocalUuid)
+            {
+                _diagLastLocalUuid = localUuid;
+                _bigCandidateLogged = false;
+                _services.Log.Info($"[Nearby] first poll after resolve local={localUuid} candidates={candidates} shown={_cache.Count}");
+            }
+            if (candidates > BigCandidateWarn && !_bigCandidateLogged)
+            {
+                _bigCandidateLogged = true;
+                _services.Log.Warning($"[Nearby] large candidate set ({candidates}) — throttled walk, shown={_cache.Count} (HUD-freeze regression fingerprint)");
+            }
         }
         catch (Exception ex)
         {
@@ -115,21 +151,24 @@ internal sealed partial class NearbyMonsterTracker
     private static int RankOrder(string rank) => rank switch { "Boss" => 0, "Elite" => 1, _ => 2 };
 
     // Walk one dict's .Keys, resolve each entity, filter to alive monsters within range, and append to _scratch.
-    // Fully guarded — a missing/absent dict just contributes nothing.
-    private void AccumulateDict(object mgr, Func<object, object?>? reader, long localUuid, Vector3 localPos, object? localEnt)
+    // Returns the number of keys scanned (the candidate count for the diagnostic). Fully guarded — a missing/absent
+    // dict just contributes nothing (and 0).
+    private int AccumulateDict(object mgr, Func<object, object?>? reader, long localUuid, Vector3 localPos, object? localEnt)
     {
-        if (reader == null) return;
+        if (reader == null) return 0;
         object? dict;
-        try { dict = reader(mgr); } catch { return; }
-        if (dict == null) return;
+        try { dict = reader(mgr); } catch { return 0; }
+        if (dict == null) return 0;
 
         object? keys;
         try { keys = dict.GetType().GetProperty("Keys", BindingFlags.Public | BindingFlags.Instance)?.GetValue(dict); }
-        catch { return; }
-        if (keys == null) return;
+        catch { return 0; }
+        if (keys == null) return 0;
 
+        int walked = 0;
         foreach (var keyObj in ReflectEnumerate(keys))
         {
+            walked++;
             if (keyObj == null) continue;
             long uuid;
             try { uuid = Convert.ToInt64(keyObj); } catch { continue; }
@@ -172,6 +211,7 @@ internal sealed partial class NearbyMonsterTracker
 
             _scratch.Add(new NearbyEntry(uuid, name, hp, maxHp, dist, rank));
         }
+        return walked;
     }
 
     // Duck-typed enumerator walk (mirrors Plugin.SelectWindow.Tables.cs). The KeyCollection's single public

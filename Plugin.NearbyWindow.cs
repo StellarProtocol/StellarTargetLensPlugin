@@ -154,12 +154,19 @@ public sealed partial class Plugin
                     Width: distCellW),
             }, Gap: rowGap);
             // Left-click a row → set the player's real in-game combat target to that monster (OnClick runs on the Unity
-            // main thread, so the tracker's ForceSetTarget call is safe direct). Selected: the framework's standard
-            // 3-state accent tint washes the row that matches the live current target (self-syncing via CurrentTargetUuid),
-            // stacking over the rank-based NAME tint. No glyph marker — the accent wash is the highlight (a ▶ marker is a
-            // trivial fast-follow if it reads too subtle in-game). Kept inside the ConditionalElement so empty rows stay
-            // collapsed AND non-interactive; no BringToFront (opens from hidden in its own HUD ZCat) or FrontWindowBlocks
-            // (SelectableElement is a standard element — the framework's interaction ticker owns its hit-testing).
+            // main thread, so the tracker's ForceSetTarget call is safe direct; SetGameTarget no-ops on uuid 0, i.e. a
+            // collapsed/empty row). Selected: the framework's standard 3-state accent tint washes the row that matches
+            // the live current target (self-syncing via CurrentTargetUuid — NearbyIsTarget is false for uuid 0), stacking
+            // over the rank-based NAME tint.
+            //
+            // ⭐ SelectableElement stays WRAPPED INSIDE the ConditionalElement (verified 2026-09-28, do NOT invert this):
+            // ConditionalElement does NOT mount/unmount — WindowBuilder builds BOTH branches ONCE and CondBinding.Apply()
+            // only diff-guarded-SetActive-toggles them, and every WindowInteractionTicker hit-test guards
+            // `activeInHierarchy`. So a collapsed row's selectable is an INACTIVE GO — its raycast target is off and its
+            // hover is skipped: no per-frame churn AND no dead click-zone. Inverting to selectable(Cond(row)) would keep
+            // the selectable permanently ACTIVE with `bg.raycastTarget=true` + a full-width LayoutElement + a ≥8px VLG
+            // padding floor over a 0-height child → an invisible full-width strip that eats WORLD clicks. No BringToFront
+            // (opens from hidden in its own HUD ZCat) or FrontWindowBlocks (the ticker owns the selectable's hit-testing).
             var selectable = new SelectableElement(row,
                 OnClick: () => _nearby.SetGameTarget(NearbyUuid(idx)),
                 Selected: () => NearbyIsTarget(idx));
