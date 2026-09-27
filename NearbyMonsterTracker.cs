@@ -155,6 +155,13 @@ internal sealed partial class NearbyMonsterTracker
             float dist = Vector3.Distance(pos, localPos);
             if (dist > MaxDistanceM) continue;
 
+            // Resolve the display name ONCE (ResolveMonsterName is fully guarded → "" on any throw) and reuse it for
+            // both the blank-check and the entry. Boss-room helper/trigger/sub-part monsters carry HP + a hostile camp
+            // but no display name; an unresolved (empty/whitespace) name means a useless nameless row → drop it. The
+            // boss and named mobs resolve a real name via entRow_→_base.Name (or the table lookup), so they're unaffected.
+            string name = ResolveMonsterName(ent);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
             string rank = "Normal";
             try
             {
@@ -163,7 +170,7 @@ internal sealed partial class NearbyMonsterTracker
             }
             catch { rank = "Normal"; }
 
-            _scratch.Add(new NearbyEntry(uuid, ResolveMonsterName(ent), hp, maxHp, dist, rank));
+            _scratch.Add(new NearbyEntry(uuid, name, hp, maxHp, dist, rank));
         }
     }
 
