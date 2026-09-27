@@ -21,7 +21,7 @@ namespace Stellar.TargetLens;
 /// own <c>GetEntity(long)</c> — the proven per-uuid resolve. Dict membership is NOT authoritative death (removal
 /// lags): alive/dead is decided by live HP only.
 /// </summary>
-internal sealed class NearbyMonsterTracker
+internal sealed partial class NearbyMonsterTracker
 {
     // A single nearby-monster row. Distance is metres (target root vs local-player root); Rank is "Boss"/"Elite"/"Normal".
     public readonly struct NearbyEntry
@@ -85,6 +85,10 @@ internal sealed class NearbyMonsterTracker
             // Local player position — the distance origin. If it isn't loaded, every distance is unknown and the
             // whole (distance-capped) list stays empty, which is the intended behaviour.
             var localEnt = GetEntityObj(mgr, localUuid);
+            // Live current-target uuid (EAttrType.AttrTargetId=30) off the local player — read here (we already hold
+            // the local entity) so the window's row highlight self-syncs to the ACTUAL target, whether it was set by
+            // our click or by the game's auto-target. Guarded read: 0 on miss / no target. (Write side: SetGameTarget.)
+            CurrentTargetUuid = localEnt != null ? ReadAttr(localEnt, _attrTargetIdBox) : 0;
             if (localEnt == null || !TryGetPosition(localEnt, out var localPos)) return;
 
             _scratch.Clear();
@@ -322,9 +326,10 @@ internal sealed class NearbyMonsterTracker
                 { _miGetAttrLong = m.MakeGenericMethod(typeof(long)); break; }
             }
 
-            _attrHpBox    = Enum.ToObject(attrEnum, AttrHpId);
-            _attrMaxHpBox = Enum.ToObject(attrEnum, AttrMaxHpId);
-            _attrIdBox    = Enum.ToObject(attrEnum, AttrIdId);
+            _attrHpBox       = Enum.ToObject(attrEnum, AttrHpId);
+            _attrMaxHpBox    = Enum.ToObject(attrEnum, AttrMaxHpId);
+            _attrIdBox       = Enum.ToObject(attrEnum, AttrIdId);
+            _attrTargetIdBox = Enum.ToObject(attrEnum, AttrTargetIdId);   // for the current-target highlight read (see .Target.cs)
 
             _piIsBoss  = entType.GetProperty("IsBoss",  pubInst);
             _piIsElite = entType.GetProperty("IsElite", pubInst);

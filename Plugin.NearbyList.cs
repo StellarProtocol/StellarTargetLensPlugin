@@ -41,6 +41,21 @@ public sealed partial class Plugin
 
     private bool NearbyRowVisible(int idx) => idx < NearbyDisplay().Count;
 
+    // Row entity uuid (0 when out of range) — the click target for SetGameTarget and the highlight compare.
+    private long NearbyUuid(int idx)
+    {
+        var l = NearbyDisplay();
+        return idx >= 0 && idx < l.Count ? l[idx].Uuid : 0;
+    }
+
+    // True when this row is the player's current in-game target (highlight source). The layout-edit example rows carry
+    // synthetic uuids (1..4) that never match a live CurrentTargetUuid, so they stay unhighlighted — intended.
+    private bool NearbyIsTarget(int idx)
+    {
+        long u = NearbyUuid(idx);
+        return u != 0 && u == _nearby.CurrentTargetUuid;
+    }
+
     // Name (left, NoWrap → the cell hard-clips a long name, same as the threat rows). Rank-tinted via NearbyRowColor.
     private string NearbyName(int idx)
     {

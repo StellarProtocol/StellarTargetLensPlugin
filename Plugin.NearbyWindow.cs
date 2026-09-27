@@ -153,7 +153,17 @@ public sealed partial class Plugin
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
                     Width: distCellW),
             }, Gap: rowGap);
-            rows[s + 1] = new ConditionalElement(() => NearbyRowVisible(idx), row);
+            // Left-click a row → set the player's real in-game combat target to that monster (OnClick runs on the Unity
+            // main thread, so the tracker's ForceSetTarget call is safe direct). Selected: the framework's standard
+            // 3-state accent tint washes the row that matches the live current target (self-syncing via CurrentTargetUuid),
+            // stacking over the rank-based NAME tint. No glyph marker — the accent wash is the highlight (a ▶ marker is a
+            // trivial fast-follow if it reads too subtle in-game). Kept inside the ConditionalElement so empty rows stay
+            // collapsed AND non-interactive; no BringToFront (opens from hidden in its own HUD ZCat) or FrontWindowBlocks
+            // (SelectableElement is a standard element — the framework's interaction ticker owns its hit-testing).
+            var selectable = new SelectableElement(row,
+                OnClick: () => _nearby.SetGameTarget(NearbyUuid(idx)),
+                Selected: () => NearbyIsTarget(idx));
+            rows[s + 1] = new ConditionalElement(() => NearbyRowVisible(idx), selectable);
         }
         return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
     }
