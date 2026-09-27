@@ -93,8 +93,8 @@ internal sealed partial class NearbyMonsterTracker
 
             _scratch.Clear();
             _seen.Clear();
-            AccumulateDict(mgr, _dictReader, localUuid, localPos);   // MonsterDict
-            AccumulateDict(mgr, _bossReader, localUuid, localPos);   // BossDict (union — a boss may not be in MonsterDict)
+            AccumulateDict(mgr, _dictReader, localUuid, localPos, localEnt);   // MonsterDict
+            AccumulateDict(mgr, _bossReader, localUuid, localPos, localEnt);   // BossDict (union — a boss may not be in MonsterDict)
 
             // Bosses first, then elites, then normal; within a tier by ascending distance. Then cap at MaxRows.
             _scratch.Sort((a, b) =>
@@ -116,7 +116,7 @@ internal sealed partial class NearbyMonsterTracker
 
     // Walk one dict's .Keys, resolve each entity, filter to alive monsters within range, and append to _scratch.
     // Fully guarded — a missing/absent dict just contributes nothing.
-    private void AccumulateDict(object mgr, Func<object, object?>? reader, long localUuid, Vector3 localPos)
+    private void AccumulateDict(object mgr, Func<object, object?>? reader, long localUuid, Vector3 localPos, object? localEnt)
     {
         if (reader == null) return;
         object? dict;
@@ -142,6 +142,10 @@ internal sealed partial class NearbyMonsterTracker
 
             var ent = GetEntityObj(mgr, uuid);
             if (ent == null) continue;
+
+            // Camp-relation filter: drop allied/friendly/team entities and non-hostile ally summons BEFORE the
+            // alive/distance work. Fail-open per entity and globally (see .Filter.cs) so a miss never blanks the HUD.
+            if (!PassesCampFilter(ent, localEnt)) continue;
 
             long hp    = ReadAttr(ent, _attrHpBox);
             long maxHp = ReadAttr(ent, _attrMaxHpBox);
@@ -349,6 +353,8 @@ internal sealed partial class NearbyMonsterTracker
                     { _miMonGetTable = m; break; }
                 _piMonName = monTbl.GetProperty("Name", pubInst);
             }
+
+            ResolveCampApi(entType);   // camp-relation ally filter (see .Filter.cs) — independent, fail-open, not required for _apiOk
 
             _apiOk = _piEntMgrStaticInstance != null && _miGetEntity != null && _miGetAttrLong != null && _dictReader != null;
             _services.Log.Info($"[Nearby] api ok={_apiOk} getEnt={_miGetEntity != null} getAttr={_miGetAttrLong != null} " +
