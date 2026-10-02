@@ -44,9 +44,14 @@ public sealed partial class Plugin
         float NearbyW = 320f * sc;   // name + HP bar + distance
         // Title + NearbySlots rows + gaps + padding, scaled by sc so the locked height grows with the rows. The window
         // is WIDTH-resizable (drag wider to fit longer monster names); Resizable FIXES the height, so we compute an
-        // explicit height and LOCK it below (MinHeight==MaxHeight). Stride matches the boss-timer window (21f * sc).
-        const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
-        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (fixed, locked height)
+        // explicit height and LOCK it below (MinHeight==MaxHeight).
+        // BaseStride is the per-row vertical budget. Each row's actual content height ≈ 18f (the Modern HP bar height,
+        // matched to the emphasized name's TMP line box — see BuildNearbyWindowRoot), so the old 21f stride carried 3f
+        // of per-row slack (8 rows = 24f) that read as a too-tall inter-row gap. Trimmed 21→19 so the budget sits just
+        // above the content (keeps headroom for the 1f*sc colGap below, no last-row clipping); MUST stay in lock-step
+        // with colGap so the locked height exactly fits NearbySlots rows + title + padding.
+        const float TitleReserve = 24f, Pad = 16f, BaseStride = 19f;
+        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 192 at 1× (fixed, locked height)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
 
@@ -128,8 +133,10 @@ public sealed partial class Plugin
         int   barFont  = (int)System.Math.Round(12 * sc);
         float barCellW = 84f * sc;
         float distCellW = 44f * sc;
-        float rowGap   = 6f * sc;
-        float colGap   = 2f * sc;
+        float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
+        // Vertical gap BETWEEN rows. Trimmed 2→1 to pack the list tighter (bar/name ≈ 18f already matches, so the gap
+        // was the remaining air). Kept in lock-step with BaseStride in RegisterNearbyWindow so the locked height fits.
+        float colGap   = 1f * sc;
 
         var rows = new HudElement[NearbySlots + 1];
         // Wrapped so the "Show nearby list title" toggle collapses the header live (rows shift up; window keeps its size).
