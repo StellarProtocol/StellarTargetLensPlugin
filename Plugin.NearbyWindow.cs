@@ -45,12 +45,14 @@ public sealed partial class Plugin
         // the all-8-rows height so it opens at today's size, but a height BAND (minH..maxH below) lets it drag taller/shorter.
         // Note the row pool is FIXED at NearbySlots — the window does NOT reflow row count to the dragged height, so dragging
         // taller just adds empty space below and shorter clips the bottom rows (acceptable for this manual-resize knob).
-        // BaseStride is the per-row vertical budget. Each row's actual content height = barH (the Modern HP bar height,
-        // which also sets the row's line box — see BuildNearbyWindowRoot), so the stride must track barH, NOT be trimmed
-        // below it: the earlier 21→19 trim shrank the budget below a comfortable row and squished the content. barH settled
-        // at the midpoint 20f (18 read squished, 22 read too tall) and the stride kept in lock-step at barH@1× + colGap@1×
-        // (20 + 1 = 21) — the row height goes INTO the row, while colGap stays 1f so the inter-row GAP stays tight. MUST stay
-        // in lock-step with barH + colGap so the locked height exactly fits NearbySlots rows + title + padding.
+        // BaseStride is the per-row vertical budget. Unlike the threat/boss lists, a Nearby row is wrapped in a
+        // SelectableElement (click-to-target), whose framework-fixed host VLG adds 8px of vertical padding around the
+        // bar (RectOffset(6,6,4,4) in WindowBuilder.Table.cs). So each row's on-screen box = barH + 8, and the real
+        // row-to-row rhythm = box + colGap. colGap is NEGATIVE (-7) in BuildNearbyWindowRoot to cancel that 8px down
+        // to a ~1px inter-bar gap, so the rhythm = (barH + 8) + colGap = (20 + 8) + (-7) = 21 at 1× — which is exactly
+        // BaseStride. Keep BaseStride == barH@1× + 1 (= 21); it MUST equal that rhythm so the locked height fits
+        // NearbySlots rows + title + padding. (At higher sc the fixed 8px/-7 drift ~1px/row, pooled harmlessly as
+        // bottom slack in the resizable band.)
         const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
         float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (DEFAULT open height = all 8 rows)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
@@ -140,15 +142,30 @@ public sealed partial class Plugin
         int   barFont  = (int)System.Math.Round(12 * sc);   // the bar's LabelFontSize — drives BOTH inside labels (name + HP%) and the distance text
         float distCellW = 44f * sc;
         float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
-        // Vertical gap BETWEEN rows. Kept tight at 1f — the earlier squish was from shrinking the row CONTENT (barH), not
-        // the gap, so barH + BaseStride carry the row-size tuning and this stays at 1. Kept in lock-step with BaseStride in
-        // RegisterNearbyWindow (BaseStride = barH@1× + this) so the locked height fits exactly.
-        float colGap   = 1f * sc;
+        // Vertical gap BETWEEN rows. NEGATIVE on purpose. Each row is wrapped in a SelectableElement (click-to-target),
+        // whose framework-fixed host VLG adds RectOffset(6,6,4,4) = 8px of vertical padding (4 top + 4 bottom) around the
+        // bar — see WindowBuilder.Table.cs BuildSelectable. THAT 8px, not this gap, was the big dark space between bars
+        // (threat/boss rows aren't wrapped in a Selectable, so they pack tight with a small positive gap). There is no
+        // plugin-side knob to drop that padding, so we CANCEL it with a negative column spacing: the on-screen gap between
+        // two bars = 8 (selectable pad) + colGap, so colGap = -7 leaves ≈1px between bars regardless of monster count.
+        // FIXED (not *sc): the 8px padding is a fixed pixel constant, so the cancellation must be fixed too — a scaled
+        // colGap would over-cancel and overlap the bars at higher row-size scales. The selectable boxes overlap by ~7px
+        // in their (empty) padding zones, but the visible green bars stay 1px apart and each bar sits solely inside its
+        // own box, so click-to-target stays unambiguous on the bars. See the BaseStride note in RegisterNearbyWindow.
+        float colGap   = -7f;
 
         var rows = new HudElement[NearbySlots + 1];
         // Wrapped so the "Show nearby list title" toggle collapses the header live (rows shift up; window keeps its size).
+        // The title carries NO selectable padding, so the uniform negative colGap (above) would otherwise pull the first
+        // bar up INTO the title text. Give the title a matching 4px inset (ColumnElement Padding=4 → 8px vertical, same as
+        // the selectable rows' RectOffset top+bottom) so the title↔first-row gap lands at the same ≈1px as row↔row, and
+        // the title glyph sits 4px below the window top in lockstep with the rows' 4px bar inset. Collapses cleanly when
+        // the "show title" toggle is off (whole wrapper goes inactive → rows shift fully up).
         rows[0] = new ConditionalElement(() => _showNearbyTitle,
-            new TextElement(() => _loc.T("tl.window.nearby"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
+            new ColumnElement(new HudElement[]
+            {
+                new TextElement(() => _loc.T("tl.window.nearby"), Color: MutedColor, Emphasis: true, FontSize: titlePx),
+            }, Gap: 0f) { Padding = 4 });
         for (int s = 0; s < NearbySlots; s++)
         {
             int idx = s;
