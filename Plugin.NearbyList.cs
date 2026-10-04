@@ -66,13 +66,62 @@ public sealed partial class Plugin
         return u != 0 && u == _nearby.CurrentTargetUuid;
     }
 
-    // Name (left, NoWrap → the cell hard-clips a long name, same as the threat rows). Rank-tinted via NearbyRowColor.
+    // Monster name — rendered as the HP bar's inside-LEFT primary label (Plugin.NearbyWindow.cs). The framework's
+    // Modern-bar overlay label uses HorizontalWrapMode.Overflow and is NOT masked to the track (only the fill clip
+    // is), so a long name would SPILL past the bar, over the HP% and off the edge. We therefore pre-truncate here to
+    // a width-aware budget and append an ellipsis — the only overflow-proof option for this label path.
     private string NearbyName(int idx)
     {
         var l = NearbyDisplay();
         if (idx >= l.Count) return "";
-        return StripTags(l[idx].Name);
+        return TruncateNameToBar(StripTags(l[idx].Name));
     }
+
+    // Width-aware ellipsis clip for the in-bar name. Geometry mirrors BuildNearbyWindowRoot's row at the live
+    // _nearbyScale and reads the live window width (the window is width-resizable 240–700), so the budget tracks the
+    // actual layout. The available text width = window width − distance cell − paddings − the track's inside insets −
+    // room reserved for the right-side HP%. We then walk the name charging each glyph a conservative width (full-width
+    // CJK/kana/hangul ≈ 1× the font px, everything else ≈ 0.65×) and stop before the budget, erring WIDE plus an
+    // ellipsis reserve + a safety slack so the result cannot overflow for any realistic monster name.
+    private string TruncateNameToBar(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        float sc = _nearbyScale;
+        // Live window width; fall back to the default 320*sc before the first layout pass / on a 0 rect.
+        float w = _nearbyWindow is { } win ? win.Rect.Width : 0f;
+        if (w <= 0f) w = 320f * sc;
+        float fontPx    = (int)Math.Round(12 * sc);         // the bar's LabelFontSize (barFont)
+        float distCellW = 44f * sc;
+        float rowGap    = 6f * sc;
+        const float colPad = 16f;                            // ColumnElement Padding (8 each side, unscaled at build)
+        const float insets = 10f;                            // AddOverlayText's 5px left+right inset inside the track
+        float barTrack  = w - colPad - distCellW - rowGap;   // the bar cell's width (Weight:1 fills the rest of the row)
+        float pctReserve = 4f * fontPx * 0.65f + 8f;         // keep clear of the right-side HP% ("100%" worst case) + a gap
+        float avail = barTrack - insets - pctReserve - fontPx /*ellipsis*/ - 6f /*slack*/;
+        if (avail <= 0f) return "…";
+
+        float used = 0f;
+        for (int i = 0; i < name.Length; i++)
+        {
+            float cw = IsWideGlyph(name[i]) ? fontPx : fontPx * 0.65f;
+            if (used + cw > avail) return name.Substring(0, i) + "…";
+            used += cw;
+        }
+        return name;   // whole name fits
+    }
+
+    // East-Asian "wide" (full-width) test: CJK/kana/hangul/fullwidth-forms glyphs render ~1× the font px where Latin
+    // is ~0.5–0.65×. Used ONLY to size the name-truncation budget conservatively, never for the text's correctness.
+    private static bool IsWideGlyph(char c)
+        => c >= 0x1100 && (
+               c <= 0x115F ||                                   // Hangul Jamo
+               c == 0x2329 || c == 0x232A ||
+               (c >= 0x2E80 && c <= 0xA4CF && c != 0x303F) ||   // CJK radicals .. Yi
+               (c >= 0xAC00 && c <= 0xD7A3) ||                  // Hangul syllables
+               (c >= 0xF900 && c <= 0xFAFF) ||                  // CJK compat ideographs
+               (c >= 0xFE30 && c <= 0xFE4F) ||                  // CJK compat forms
+               (c >= 0xFF00 && c <= 0xFF60) ||                  // Fullwidth forms
+               (c >= 0xFFE0 && c <= 0xFFE6));
 
     // Bar fill = current HP fraction (clamped). MaxHp <= 0 → empty (shouldn't happen — the tracker filters alive only).
     private float NearbyFraction(int idx)
@@ -99,18 +148,5 @@ public sealed partial class Plugin
         var l = NearbyDisplay();
         if (idx >= l.Count) return "";
         return $"{(int)Math.Round(l[idx].Distance)}m";
-    }
-
-    // Name colour by rank: boss = red/orange accent, elite = yellow accent, normal = default (null → theme default).
-    private ColorRgba? NearbyRowColor(int idx)
-    {
-        var l = NearbyDisplay();
-        if (idx >= l.Count) return null;
-        return l[idx].Rank switch
-        {
-            "Boss"  => NearbyBossColor,
-            "Elite" => NearbyEliteColor,
-            _        => (ColorRgba?)null,
-        };
     }
 }

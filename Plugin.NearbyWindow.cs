@@ -4,7 +4,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 // Standalone NEARBY MONSTERS overlay — a borderless auto-showing HUD window listing the nearest alive monsters,
-// each as a row: [name] [Modern HP bar : HP%] [distance]. Bosses/elites sort first, then by distance ascending;
+// each as a row: [Modern HP bar — name inside-left, HP% inside-right] [distance]. Bosses/elites sort first, then by distance ascending;
 // capped at NearbySlots rows and hidden beyond ~60 m (see NearbyMonsterTracker). Mirrors the boss-timer window:
 // width-resizable with a locked height, a debounced row-size slider, layout-edit example rows so it can be placed
 // without a live encounter, and gated by ShouldRender on the toggle + a non-empty list.
@@ -27,8 +27,6 @@ public sealed partial class Plugin
     private const int NearbySlots = 8;   // fixed row pool (top-N cap in NearbyMonsterTracker)
 
     private static readonly ColorRgba NearbyHpFill     = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
-    private static readonly ColorRgba NearbyBossColor  = new(1.00f, 0.45f, 0.32f, 1f);  // red/orange — boss name
-    private static readonly ColorRgba NearbyEliteColor = new(1.00f, 0.85f, 0.38f, 1f);  // yellow — elite name
 
     private void RegisterNearbyWindow()
     {
@@ -122,17 +120,15 @@ public sealed partial class Plugin
         RebuildNearbyWindow();
     }
 
-    // Title + a fixed pool of NearbySlots rows. Each row = [name] [Modern HP bar : HP%] [distance]. Rows collapse to
-    // zero height when they have no live entry (ConditionalElement on NearbyRowVisible). Row dimensions scale together
+    // Title + a fixed pool of NearbySlots rows. Each row = [Modern HP bar — name inside-left, HP% inside-right] [distance].
+    // Rows collapse to zero height when they have no live entry (ConditionalElement on NearbyRowVisible). Row dimensions scale together
     // by _nearbyScale; the TITLE is kept at a fixed size (excluded from scaling) so only the rows grow.
     private HudElement BuildNearbyWindowRoot()
     {
         float sc       = _nearbyScale;
         int   titlePx  = 14;   // fixed — title glyph does NOT scale with _nearbyScale (only the rows do)
-        int   namePx   = (int)System.Math.Round(14 * sc);
-        float barH     = 20f * sc;   // row content height (Modern bar + name line box) — midpoint of 18 (squished) and 22 (too tall)
-        int   barFont  = (int)System.Math.Round(12 * sc);
-        float barCellW = 84f * sc;
+        float barH     = 20f * sc;   // row content height (Modern bar + inside-label line box) — midpoint of 18 (squished) and 22 (too tall)
+        int   barFont  = (int)System.Math.Round(12 * sc);   // the bar's LabelFontSize — drives BOTH inside labels (name + HP%) and the distance text
         float distCellW = 44f * sc;
         float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
         // Vertical gap BETWEEN rows. Kept tight at 1f — the earlier squish was from shrinking the row CONTENT (barH), not
@@ -149,15 +145,17 @@ public sealed partial class Plugin
             int idx = s;
             var row = new RowElement(new HudElement[]
             {
-                // Emphasis:true routes the name through the STYLED text path so TextElement.FontSize is honoured
-                // (the plain menu-surface path drops it) — same reasoning as the threat rows. NoWrap hard-clips.
+                // The HP bar fills the row width (Weight:1). The monster NAME is the bar's inside-LEFT primary label
+                // and the HP% the inside-RIGHT SecondaryLabel (Modern dual-overlay). The framework's Modern label uses
+                // HorizontalWrapMode.Overflow and is NOT masked to the track, so a long name would SPILL past the bar —
+                // NearbyName() pre-truncates to a width-aware budget and appends an ellipsis so it can't overflow. The
+                // name's old rank tint is dropped: the Modern inside label has no per-row colour hook (LabelColor is
+                // honoured only by the Default bar path, and is a static value, not a Func of the slot's live occupant).
                 new CellElement(
-                    new TextElement(() => NearbyName(idx), Color: () => NearbyRowColor(idx), FontSize: namePx, NoWrap: true, Emphasis: true),
+                    new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyName(idx))
+                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
+                      LabelInside = true, SecondaryLabel = () => NearbyHpPct(idx) },
                     Weight: 1f),
-                new CellElement(
-                    new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyHpPct(idx))
-                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont, LabelInside = true },
-                    Width: barCellW),
                 new CellElement(
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
                     Width: distCellW),
@@ -165,8 +163,7 @@ public sealed partial class Plugin
             // Left-click a row → set the player's real in-game combat target to that monster (OnClick runs on the Unity
             // main thread, so the tracker's ForceSetTarget call is safe direct; SetGameTarget no-ops on uuid 0, i.e. a
             // collapsed/empty row). Selected: the framework's standard 3-state accent tint washes the row that matches
-            // the live current target (self-syncing via CurrentTargetUuid — NearbyIsTarget is false for uuid 0), stacking
-            // over the rank-based NAME tint.
+            // the live current target (self-syncing via CurrentTargetUuid — NearbyIsTarget is false for uuid 0).
             //
             // ⭐ SelectableElement stays WRAPPED INSIDE the ConditionalElement (verified 2026-09-28, do NOT invert this):
             // ConditionalElement does NOT mount/unmount — WindowBuilder builds BOTH branches ONCE and CondBinding.Apply()
