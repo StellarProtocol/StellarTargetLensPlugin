@@ -6,7 +6,7 @@ namespace Stellar.TargetLens;
 // Standalone NEARBY MONSTERS overlay — a borderless auto-showing HUD window listing the nearest alive monsters,
 // each as a row: [Modern HP bar — name inside-left, HP% inside-right] [distance]. Bosses/elites sort first, then by distance ascending;
 // capped at NearbySlots rows and hidden beyond ~60 m (see NearbyMonsterTracker). Mirrors the boss-timer window:
-// width-resizable with a locked height, a debounced row-size slider, layout-edit example rows so it can be placed
+// width- AND (now) height-resizable, a debounced row-size slider, layout-edit example rows so it can be placed
 // without a live encounter, and gated by ShouldRender on the toggle + a non-empty list.
 //
 // Data: NearbyMonsterTracker.Current (walks ZEntityMgr.MonsterDict ∪ BossDict each frame). Row getters + the
@@ -40,9 +40,11 @@ public sealed partial class Plugin
 
         float sc = _nearbyScale;
         float NearbyW = 320f * sc;   // name + HP bar + distance
-        // Title + NearbySlots rows + gaps + padding, scaled by sc so the locked height grows with the rows. The window
-        // is WIDTH-resizable (drag wider to fit longer monster names); Resizable FIXES the height, so we compute an
-        // explicit height and LOCK it below (MinHeight==MaxHeight).
+        // Title + NearbySlots rows + gaps + padding, scaled by sc so the default height grows with the rows. The window
+        // is now BOTH width- AND height-resizable (user asked to dial the size in live "for now"): DefaultRect height stays
+        // the all-8-rows height so it opens at today's size, but a height BAND (minH..maxH below) lets it drag taller/shorter.
+        // Note the row pool is FIXED at NearbySlots — the window does NOT reflow row count to the dragged height, so dragging
+        // taller just adds empty space below and shorter clips the bottom rows (acceptable for this manual-resize knob).
         // BaseStride is the per-row vertical budget. Each row's actual content height = barH (the Modern HP bar height,
         // which also sets the row's line box — see BuildNearbyWindowRoot), so the stride must track barH, NOT be trimmed
         // below it: the earlier 21→19 trim shrank the budget below a comfortable row and squished the content. barH settled
@@ -50,9 +52,13 @@ public sealed partial class Plugin
         // (20 + 1 = 21) — the row height goes INTO the row, while colGap stays 1f so the inter-row GAP stays tight. MUST stay
         // in lock-step with barH + colGap so the locked height exactly fits NearbySlots rows + title + padding.
         const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
-        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (fixed, locked height)
+        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (DEFAULT open height = all 8 rows)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
+        // Height band: floor = title + ~2 rows so it can't collapse to nothing (≈ 82 at 1×); ceiling ≈ double the all-8-rows
+        // height (≈ 416 at 1×) for generous headroom. Both track the same scaled stride as nearbyH so they grow with the rows.
+        float minH    = (TitleReserve + Pad + 2 * BaseStride) * sc;
+        float maxH    = (TitleReserve + Pad + NearbySlots * BaseStride) * sc * 2f;
 
         // Default position on the left side, clear of the other overlays' defaults (threat x=1716, boss-timer x=690).
         // Fixed 1440p-calibrated pixel literals (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a
@@ -69,8 +75,8 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                // Width-resizable so longer names fit; height LOCKED via MinHeight==MaxHeight so only width drags.
-                Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = nearbyH, MaxHeight = nearbyH,
+                // Width-resizable so longer names fit; height now ALSO drag-resizable within minH..maxH (user dialing size in live).
+                Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, AND a non-empty nearby list so
                 // it never shows an empty box. Layout-edit mode overrides so the overlay (with example rows) can be placed.
                 ShouldRender = () => _services.Windows.IsLayoutEditing
@@ -87,12 +93,15 @@ public sealed partial class Plugin
         _nearbyWindow.SetVisible(_nearbyOn);
     }
 
-    // Re-apply a new _nearbyScale by rebuilding the window Root at the new scale (element sizes + the locked height +
-    // the width band are baked at build time). Framework-sanctioned Remove()+Register() (mirrors RebuildBossTimerWindow):
-    // preserve ONLY the rect — NOT IsShown (at a rebuild moment with nothing nearby it reads false and would strand
-    // the window off); RegisterNearbyWindow's SetVisible(_nearbyOn) + the ShouldRender gate handle visibility.
+    // Re-apply a new _nearbyScale by rebuilding the window Root at the new scale (element sizes + the resize bands are
+    // baked at build time). Framework-sanctioned Remove()+Register() (mirrors RebuildBossTimerWindow): preserve ONLY the
+    // rect — NOT IsShown (at a rebuild moment with nothing nearby it reads false and would strand the window off);
+    // RegisterNearbyWindow's SetVisible(_nearbyOn) + the ShouldRender gate handle visibility.
     private void RebuildNearbyWindow()
     {
+        // rect carries x/y/width/HEIGHT, and SetRect restores all of it — so a height the user dragged survives the
+        // slider-driven rebuild (not regressed to the recomputed DefaultRect height). Guard on Width>0 just skips a
+        // never-laid-out rect.
         var rect = _nearbyWindow.Rect;
         _windows.Remove(_nearbyWindow);
         _nearbyWindow.Remove();
