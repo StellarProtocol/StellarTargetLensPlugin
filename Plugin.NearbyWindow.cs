@@ -45,13 +45,14 @@ public sealed partial class Plugin
         // Title + NearbySlots rows + gaps + padding, scaled by sc so the locked height grows with the rows. The window
         // is WIDTH-resizable (drag wider to fit longer monster names); Resizable FIXES the height, so we compute an
         // explicit height and LOCK it below (MinHeight==MaxHeight).
-        // BaseStride is the per-row vertical budget. Each row's actual content height ≈ 18f (the Modern HP bar height,
-        // matched to the emphasized name's TMP line box — see BuildNearbyWindowRoot), so the old 21f stride carried 3f
-        // of per-row slack (8 rows = 24f) that read as a too-tall inter-row gap. Trimmed 21→19 so the budget sits just
-        // above the content (keeps headroom for the 1f*sc colGap below, no last-row clipping); MUST stay in lock-step
-        // with colGap so the locked height exactly fits NearbySlots rows + title + padding.
-        const float TitleReserve = 24f, Pad = 16f, BaseStride = 19f;
-        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 192 at 1× (fixed, locked height)
+        // BaseStride is the per-row vertical budget. Each row's actual content height = barH (the Modern HP bar height,
+        // which also sets the row's line box — see BuildNearbyWindowRoot), so the stride must track barH, NOT be trimmed
+        // below it: the earlier 21→19 trim shrank the budget below a comfortable row and squished the content. Row height
+        // raised to 22f and the stride kept in lock-step at barH@1× + colGap@1× (22 + 1 = 23) — the extra height goes INTO
+        // the row, while colGap stays 1f so the inter-row GAP stays tight. MUST stay in lock-step with barH + colGap so
+        // the locked height exactly fits NearbySlots rows + title + padding.
+        const float TitleReserve = 24f, Pad = 16f, BaseStride = 23f;
+        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 224 at 1× (fixed, locked height)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
 
@@ -129,13 +130,14 @@ public sealed partial class Plugin
         float sc       = _nearbyScale;
         int   titlePx  = 14;   // fixed — title glyph does NOT scale with _nearbyScale (only the rows do)
         int   namePx   = (int)System.Math.Round(14 * sc);
-        float barH     = 18f * sc;
+        float barH     = 22f * sc;   // row content height (Modern bar + name line box) — raised 18→22 so rows read un-squished
         int   barFont  = (int)System.Math.Round(12 * sc);
         float barCellW = 84f * sc;
         float distCellW = 44f * sc;
         float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
-        // Vertical gap BETWEEN rows. Trimmed 2→1 to pack the list tighter (bar/name ≈ 18f already matches, so the gap
-        // was the remaining air). Kept in lock-step with BaseStride in RegisterNearbyWindow so the locked height fits.
+        // Vertical gap BETWEEN rows. Kept tight at 1f — the earlier squish was from shrinking the row CONTENT (barH), not
+        // the gap, so the fix raised barH + BaseStride and left this at 1. Kept in lock-step with BaseStride in
+        // RegisterNearbyWindow (BaseStride = barH@1× + this) so the locked height fits exactly.
         float colGap   = 1f * sc;
 
         var rows = new HudElement[NearbySlots + 1];
