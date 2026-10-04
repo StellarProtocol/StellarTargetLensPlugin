@@ -47,12 +47,12 @@ public sealed partial class Plugin
         // explicit height and LOCK it below (MinHeight==MaxHeight).
         // BaseStride is the per-row vertical budget. Each row's actual content height = barH (the Modern HP bar height,
         // which also sets the row's line box — see BuildNearbyWindowRoot), so the stride must track barH, NOT be trimmed
-        // below it: the earlier 21→19 trim shrank the budget below a comfortable row and squished the content. Row height
-        // raised to 22f and the stride kept in lock-step at barH@1× + colGap@1× (22 + 1 = 23) — the extra height goes INTO
-        // the row, while colGap stays 1f so the inter-row GAP stays tight. MUST stay in lock-step with barH + colGap so
-        // the locked height exactly fits NearbySlots rows + title + padding.
-        const float TitleReserve = 24f, Pad = 16f, BaseStride = 23f;
-        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 224 at 1× (fixed, locked height)
+        // below it: the earlier 21→19 trim shrank the budget below a comfortable row and squished the content. barH settled
+        // at the midpoint 20f (18 read squished, 22 read too tall) and the stride kept in lock-step at barH@1× + colGap@1×
+        // (20 + 1 = 21) — the row height goes INTO the row, while colGap stays 1f so the inter-row GAP stays tight. MUST stay
+        // in lock-step with barH + colGap so the locked height exactly fits NearbySlots rows + title + padding.
+        const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
+        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (fixed, locked height)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
 
@@ -130,13 +130,13 @@ public sealed partial class Plugin
         float sc       = _nearbyScale;
         int   titlePx  = 14;   // fixed — title glyph does NOT scale with _nearbyScale (only the rows do)
         int   namePx   = (int)System.Math.Round(14 * sc);
-        float barH     = 22f * sc;   // row content height (Modern bar + name line box) — raised 18→22 so rows read un-squished
+        float barH     = 20f * sc;   // row content height (Modern bar + name line box) — midpoint of 18 (squished) and 22 (too tall)
         int   barFont  = (int)System.Math.Round(12 * sc);
         float barCellW = 84f * sc;
         float distCellW = 44f * sc;
         float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
         // Vertical gap BETWEEN rows. Kept tight at 1f — the earlier squish was from shrinking the row CONTENT (barH), not
-        // the gap, so the fix raised barH + BaseStride and left this at 1. Kept in lock-step with BaseStride in
+        // the gap, so barH + BaseStride carry the row-size tuning and this stays at 1. Kept in lock-step with BaseStride in
         // RegisterNearbyWindow (BaseStride = barH@1× + this) so the locked height fits exactly.
         float colGap   = 1f * sc;
 
