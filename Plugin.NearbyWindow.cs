@@ -27,6 +27,8 @@ public sealed partial class Plugin
     private const int NearbySlots = 8;   // fixed row pool (top-N cap in NearbyMonsterTracker)
 
     private static readonly ColorRgba NearbyHpFill     = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
+    private static readonly ColorRgba NearbyBossColor  = new(1.00f, 0.45f, 0.32f, 1f);  // red/orange — boss name
+    private static readonly ColorRgba NearbyEliteColor = new(1.00f, 0.85f, 0.38f, 1f);  // yellow — elite name
 
     private void RegisterNearbyWindow()
     {
@@ -175,12 +177,13 @@ public sealed partial class Plugin
                 // and the HP% the inside-RIGHT SecondaryLabel (Modern dual-overlay). The framework's Modern label uses
                 // HorizontalWrapMode.Overflow and is NOT masked to the track, so a long name would SPILL past the bar —
                 // NearbyName() pre-truncates to a width-aware budget and appends an ellipsis so it can't overflow. The
-                // name's old rank tint is dropped: the Modern inside label has no per-row colour hook (LabelColor is
-                // honoured only by the Default bar path, and is a static value, not a Func of the slot's live occupant).
+                // name's rank tint (boss red / elite yellow) is restored via LabelColorFn — a Func the framework calls
+                // per row for the primary inside label, so a recycled slot re-colours when its occupant changes rank
+                // (null → the default white). The SecondaryLabel (HP%) stays at the default colour.
                 new CellElement(
                     new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyName(idx))
                     { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
-                      LabelInside = true, SecondaryLabel = () => NearbyHpPct(idx) },
+                      LabelInside = true, LabelColorFn = () => NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
                     Weight: 1f),
                 new CellElement(
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),

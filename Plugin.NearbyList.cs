@@ -77,6 +77,21 @@ public sealed partial class Plugin
         return TruncateNameToBar(StripTags(l[idx].Name));
     }
 
+    // Name colour by rank: boss = red/orange accent, elite = yellow accent, normal = default (null → theme default).
+    // Read off the same frame-gated display list as the other getters, so a recycled row re-tints when its live
+    // occupant changes rank (boss→elite→normal). Wired to the HP bar's primary inside label via LabelColorFn.
+    private ColorRgba? NearbyRowColor(int idx)
+    {
+        var l = NearbyDisplay();
+        if (idx >= l.Count) return null;
+        return l[idx].Rank switch
+        {
+            "Boss"  => NearbyBossColor,
+            "Elite" => NearbyEliteColor,
+            _        => (ColorRgba?)null,
+        };
+    }
+
     // Width-aware ellipsis clip for the in-bar name. Geometry mirrors BuildNearbyWindowRoot's row at the live
     // _nearbyScale and reads the live window width (the window is width-resizable 240–700), so the budget tracks the
     // actual layout. The available text width = window width − distance cell − paddings − the track's inside insets −
