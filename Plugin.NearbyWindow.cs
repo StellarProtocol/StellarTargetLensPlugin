@@ -177,13 +177,14 @@ public sealed partial class Plugin
                 // and the HP% the inside-RIGHT SecondaryLabel (Modern dual-overlay). The framework's Modern label uses
                 // HorizontalWrapMode.Overflow and is NOT masked to the track, so a long name would SPILL past the bar —
                 // NearbyName() pre-truncates to a width-aware budget and appends an ellipsis so it can't overflow. The
-                // name's rank tint (boss red / elite yellow) is restored via LabelColorFn — a Func the framework calls
-                // per row for the primary inside label, so a recycled slot re-colours when its occupant changes rank
-                // (null → the default white). The SecondaryLabel (HP%) stays at the default colour.
+                // rank tint (boss red / elite orange) is carried by the bar FILL, not the text: FillColorFn — a Func the
+                // framework calls per row — overrides the static green NearbyHpFill when non-null, so a recycled slot
+                // re-colours its fill when its occupant changes rank (null → the static green fallback). The NAME and the
+                // HP% SecondaryLabel both stay at the framework default (white); HP amount reads from fill length + the %.
                 new CellElement(
                     new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyName(idx))
                     { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
-                      LabelInside = true, LabelColorFn = () => NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
+                      LabelInside = true, FillColorFn = () => NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
                     Weight: 1f),
                 new CellElement(
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
