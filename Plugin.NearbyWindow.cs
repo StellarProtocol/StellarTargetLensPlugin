@@ -26,9 +26,10 @@ public sealed partial class Plugin
 
     private const int NearbySlots = 8;   // fixed row pool (top-N cap in NearbyMonsterTracker)
 
-    private static readonly ColorRgba NearbyHpFill     = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
-    private static readonly ColorRgba NearbyBossColor  = new(0.93f, 0.23f, 0.20f, 1f);  // red — boss name
-    private static readonly ColorRgba NearbyEliteColor = new(0.95f, 0.55f, 0.15f, 1f);  // dark orange — elite name
+    private static readonly ColorRgba NearbyHpFill      = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
+    private static readonly ColorRgba NearbyBossColor   = new(0.93f, 0.23f, 0.20f, 1f);  // red — boss rank fill
+    private static readonly ColorRgba NearbyEliteColor  = new(0.95f, 0.55f, 0.15f, 1f);  // dark orange — elite rank fill
+    private static readonly ColorRgba NearbyTargetColor = new(0.30f, 0.60f, 0.95f, 1f);  // azure — current-target fill (overrides rank; white name/HP% stay readable)
 
     private void RegisterNearbyWindow()
     {
@@ -179,12 +180,15 @@ public sealed partial class Plugin
                 // NearbyName() pre-truncates to a width-aware budget and appends an ellipsis so it can't overflow. The
                 // rank tint (boss red / elite orange) is carried by the bar FILL, not the text: FillColorFn — a Func the
                 // framework calls per row — overrides the static green NearbyHpFill when non-null, so a recycled slot
-                // re-colours its fill when its occupant changes rank (null → the static green fallback). The NAME and the
-                // HP% SecondaryLabel both stay at the framework default (white); HP amount reads from fill length + the %.
+                // re-colours its fill when its occupant changes rank (null → the static green fallback). The current-TARGET
+                // row (NearbyIsTarget) overrides rank with a blue fill so the locked monster is obvious at a glance — this is
+                // ADDITIONAL to the SelectableElement's Selected accent tint on the same row (the blue is on the fill, the
+                // tint on the row background, so they reinforce rather than clash). The NAME and the HP% SecondaryLabel both
+                // stay at the framework default (white); HP amount reads from fill length + the %.
                 new CellElement(
                     new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyName(idx))
                     { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
-                      LabelInside = true, FillColorFn = () => NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
+                      LabelInside = true, FillColorFn = () => NearbyIsTarget(idx) ? (ColorRgba?)NearbyTargetColor : NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
                     Weight: 1f),
                 new CellElement(
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
