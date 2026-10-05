@@ -27,8 +27,8 @@ public sealed partial class Plugin
     private const int NearbySlots = 8;   // fixed row pool (top-N cap in NearbyMonsterTracker)
 
     private static readonly ColorRgba NearbyHpFill     = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
-    private static readonly ColorRgba NearbyBossColor  = new(1.00f, 0.45f, 0.32f, 1f);  // red/orange — boss name
-    private static readonly ColorRgba NearbyEliteColor = new(1.00f, 0.85f, 0.38f, 1f);  // yellow — elite name
+    private static readonly ColorRgba NearbyBossColor  = new(0.93f, 0.23f, 0.20f, 1f);  // red — boss name
+    private static readonly ColorRgba NearbyEliteColor = new(0.95f, 0.55f, 0.15f, 1f);  // dark orange — elite name
 
     private void RegisterNearbyWindow()
     {
