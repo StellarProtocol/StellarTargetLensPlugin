@@ -58,12 +58,16 @@ public sealed partial class Plugin
         return idx >= 0 && idx < l.Count ? l[idx].Uuid : 0;
     }
 
-    // True when this row is the player's current in-game target (highlight source). The layout-edit example rows carry
-    // synthetic uuids (1..4) that never match a live CurrentTargetUuid, so they stay unhighlighted — intended.
+    // True when this row is the player's current in-game target (highlight source). Compares against the authoritative
+    // current-target resolver (_targetInfo.Current.Uuid) — the SAME value the main Target HUD shows — so blue follows
+    // BOTH the soft aim slot AND a hard lock. NearbyMonsterTracker.CurrentTargetUuid reads only AttrTargetId (30), the
+    // aim slot, which clears on hard-lock (target then lives in AttrTargetUuid 450 / ZWorld.LockTargetUuid) — that was
+    // why the blue bar fell off a locked monster. Current's getter is frame-gated, so touching it here is fresh + cheap.
+    // The layout-edit example rows carry synthetic uuids (1..4) that never match a live target uuid → stay unhighlighted.
     private bool NearbyIsTarget(int idx)
     {
         long u = NearbyUuid(idx);
-        return u != 0 && u == _nearby.CurrentTargetUuid;
+        return u != 0 && u == _targetInfo.Current.Uuid;
     }
 
     // Monster name — rendered as the HP bar's inside-LEFT primary label (Plugin.NearbyWindow.cs). The framework's
