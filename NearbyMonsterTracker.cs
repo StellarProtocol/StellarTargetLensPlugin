@@ -135,6 +135,7 @@ internal sealed partial class NearbyMonsterTracker
                 _diagLastLocalUuid = localUuid;
                 _bigCandidateLogged = false;
                 _targetabilitySeenNames.Clear();   // re-emit the targetability diagnostic once per name after each resolve/scene change
+                _everTargetable.Clear();           // drop the sticky targetability latch so it never carries stale uuids across encounters
                 _services.Log.Info($"[Nearby] first poll after resolve local={localUuid} candidates={candidates} shown={_cache.Count}");
             }
             if (candidates > BigCandidateWarn && !_bigCandidateLogged)
@@ -199,7 +200,7 @@ internal sealed partial class NearbyMonsterTracker
 
             // Targetability gate (AttrCantHit=723, inverse flag) + rate-limited validation diagnostic — see .Filter.cs.
             // Non-zero 723 = immune/untargetable → drop; absent/0/read-miss → keep (fail-open, so normal mobs are safe).
-            if (!PassesTargetabilityGate(ent, name, rank, hp, maxHp)) continue;
+            if (!PassesTargetabilityGate(ent, uuid, name, rank, hp, maxHp)) continue;
 
             // An unresolved (empty/whitespace) name means a useless nameless row → drop it. The boss and named mobs
             // resolve a real name via entRow_→_base.Name (or the table lookup), so they're unaffected.

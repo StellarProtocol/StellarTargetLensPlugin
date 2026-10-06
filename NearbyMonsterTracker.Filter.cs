@@ -157,6 +157,14 @@ internal sealed partial class NearbyMonsterTracker
     // in Poll) so the readings re-emit per scene. NOT used for filtering.
     private readonly HashSet<string> _targetabilitySeenNames = new();
 
+    // Sticky targetability latch: uuids that have read targetable (cantHit==0) at least once this encounter.
+    // AttrCantHit(723) is a LIVE flag — a boss/mob that goes invincible mid-fight (mechanic/immune phase) would
+    // otherwise drop out of the list and flicker. So once a monster has EVER been targetable we keep it even when it
+    // later reads untargetable; only monsters that are NEVER targetable (decorative/gimmick) stay excluded. Cleared on
+    // the SAME first-poll-after-resolve latch as _targetabilitySeenNames so it never carries stale uuids across
+    // encounters or grows unbounded.
+    private readonly HashSet<long> _everTargetable = new();
+
     // Resolve the targetability attr boxes. Called from EnsureApi; fail-soft — a null box just makes ReadAttr return 0
     // (keep), so this never gates the main _apiOk and a resolve miss degrades to "show all" rather than blanking.
     private void ResolveTargetabilityApi(Type attrEnum)
@@ -172,9 +180,15 @@ internal sealed partial class NearbyMonsterTracker
 
     /// <summary>
     /// Targetability gate for monsters that already passed the camp + alive checks. Reads the inverse immunity attr
-    /// <c>AttrCantHit</c> (723): non-zero means the monster cannot be hit/targeted (invulnerable/decorative/gimmick) →
-    /// returns false (drop). Absent/0 — the common case — or any read failure → true (keep): fail-open, so a normal
-    /// mob that never carries the attr is never wrongly dropped.
+    /// <c>AttrCantHit</c> (723): non-zero means the monster currently cannot be hit/targeted
+    /// (invulnerable/decorative/gimmick). Absent/0 — the common case — or any read failure → true (keep): fail-open,
+    /// so a normal mob that never carries the attr is never wrongly dropped.
+    ///
+    /// STICKY latch (see <see cref="_everTargetable"/>): 723 is a LIVE flag, so a boss/mob that goes invincible
+    /// mid-fight would otherwise flicker out of the list. So the gate keeps any monster that has read targetable at
+    /// least once this encounter: <c>cantHit==0</c> → latch the uuid and keep; <c>cantHit!=0</c> → keep ONLY if the
+    /// uuid was latched before (transient immunity on something we already saw hittable), otherwise drop (never been
+    /// targetable → decorative/gimmick).
     ///
     /// ⚠️ UNVALIDATED: the IL2CPP dump can't confirm the server actually sets 723 on the untargetable monsters the
     /// user sees, so this also emits a rate-limited diagnostic — once per distinct monster NAME (cached in
@@ -183,7 +197,7 @@ internal sealed partial class NearbyMonsterTracker
     /// on. Checking the log against a known untargetable monster confirms the gate or tells us to pivot (e.g. to
     /// MonsterTable <c>BkCanBeHit</c> / invincible buff 521001).
     /// </summary>
-    private bool PassesTargetabilityGate(object ent, string name, string rank, long hp, long maxHp)
+    private bool PassesTargetabilityGate(object ent, long uuid, string name, string rank, long hp, long maxHp)
     {
         long cantHit = ReadAttr(ent, _attrCantHitBox);
 
@@ -195,7 +209,10 @@ internal sealed partial class NearbyMonsterTracker
                 $"canHatred(724)={canHatred} hp={hp}/{maxHp} rank={rank}");
         }
 
-        return cantHit == 0;   // non-zero = immune/untargetable → drop; 0 / absent / read-miss → keep (fail-open)
+        // 0 / absent / read-miss = currently targetable → latch and keep (fail-open). Non-zero = currently immune →
+        // keep only if this uuid was EVER targetable (transient invincibility), else drop (never targetable → gimmick).
+        if (cantHit == 0) { _everTargetable.Add(uuid); return true; }
+        return _everTargetable.Contains(uuid);
     }
 
     // Boss > Elite > Normal, guarded (mirrors the previous inline resolve in AccumulateDict). Used by the row entry
