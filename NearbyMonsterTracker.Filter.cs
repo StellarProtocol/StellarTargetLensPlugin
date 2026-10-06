@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Stellar.Abstractions.Domain;
 using Stellar.Abstractions.Services;
@@ -137,4 +138,76 @@ internal sealed partial class NearbyMonsterTracker
     }
 
     private bool IsSummon(object ent) => ReadBool(ent, _piIsSummon);
+
+    // ── Targetability gate (AttrCantHit=723) + validation diagnostic ─────────────────────────────────────────────
+    // EAttrType ids (release_3.7). 723 is an INVERSE flag ON PURPOSE: non-zero = cannot be hit/targeted, so an
+    // absent/default attr reads 0 → treated as hittable → KEEP. That makes the gate fail-open — a normal mob that
+    // never carries the attr is never wrongly dropped. 720/724 are read for the LOG ONLY (reading 0 when absent would
+    // wrongly drop normal mobs, so they must NOT be filtered on).
+    private const int AttrCantHitId   = 723;  // EAttrType.AttrCantHit — non-zero = immune/untargetable (the gate)
+    private const int AttrCanBeHitId  = 720;  // EAttrType.AttrCanBeHit — diagnostic only
+    private const int AttrCanHatredId = 724;  // EAttrType.AttrCanBeHatredTarget — diagnostic only
+
+    private object? _attrCantHitBox;   // lazy Enum boxes, resolved in EnsureApi via ResolveTargetabilityApi
+    private object? _attrCanBeHitBox;
+    private object? _attrCanHatredBox;
+
+    // Dedupe for the validation diagnostic: log the raw 723/720/724 readings once per distinct monster NAME (names
+    // are few, so an unbounded set is fine). Cleared on each resolve/scene change (the first-poll-after-resolve latch
+    // in Poll) so the readings re-emit per scene. NOT used for filtering.
+    private readonly HashSet<string> _targetabilitySeenNames = new();
+
+    // Resolve the targetability attr boxes. Called from EnsureApi; fail-soft — a null box just makes ReadAttr return 0
+    // (keep), so this never gates the main _apiOk and a resolve miss degrades to "show all" rather than blanking.
+    private void ResolveTargetabilityApi(Type attrEnum)
+    {
+        try
+        {
+            _attrCantHitBox   = Enum.ToObject(attrEnum, AttrCantHitId);
+            _attrCanBeHitBox  = Enum.ToObject(attrEnum, AttrCanBeHitId);
+            _attrCanHatredBox = Enum.ToObject(attrEnum, AttrCanHatredId);
+        }
+        catch (Exception ex) { _services.Log.Warning($"[Nearby] targetability api resolve error: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Targetability gate for monsters that already passed the camp + alive checks. Reads the inverse immunity attr
+    /// <c>AttrCantHit</c> (723): non-zero means the monster cannot be hit/targeted (invulnerable/decorative/gimmick) →
+    /// returns false (drop). Absent/0 — the common case — or any read failure → true (keep): fail-open, so a normal
+    /// mob that never carries the attr is never wrongly dropped.
+    ///
+    /// ⚠️ UNVALIDATED: the IL2CPP dump can't confirm the server actually sets 723 on the untargetable monsters the
+    /// user sees, so this also emits a rate-limited diagnostic — once per distinct monster NAME (cached in
+    /// <see cref="_targetabilitySeenNames"/> so it never spams per-frame) it logs the raw 723/720/724 readings.
+    /// <c>AttrCanBeHit</c> (720) and <c>AttrCanBeHatredTarget</c> (724) are read for the LOG ONLY and are NOT filtered
+    /// on. Checking the log against a known untargetable monster confirms the gate or tells us to pivot (e.g. to
+    /// MonsterTable <c>BkCanBeHit</c> / invincible buff 521001).
+    /// </summary>
+    private bool PassesTargetabilityGate(object ent, string name, string rank, long hp, long maxHp)
+    {
+        long cantHit = ReadAttr(ent, _attrCantHitBox);
+
+        if (!string.IsNullOrWhiteSpace(name) && _targetabilitySeenNames.Add(name))
+        {
+            long canBeHit  = ReadAttr(ent, _attrCanBeHitBox);
+            long canHatred = ReadAttr(ent, _attrCanHatredBox);
+            _services.Log.Info($"[Nearby] targetability name='{name}' cantHit(723)={cantHit} canBeHit(720)={canBeHit} " +
+                $"canHatred(724)={canHatred} hp={hp}/{maxHp} rank={rank}");
+        }
+
+        return cantHit == 0;   // non-zero = immune/untargetable → drop; 0 / absent / read-miss → keep (fail-open)
+    }
+
+    // Boss > Elite > Normal, guarded (mirrors the previous inline resolve in AccumulateDict). Used by the row entry
+    // and the targetability diagnostic so both agree.
+    private string ResolveRank(object ent)
+    {
+        try
+        {
+            if (ReadBool(ent, _piIsBoss)) return "Boss";
+            if (ReadBool(ent, _piIsElite)) return "Elite";
+        }
+        catch { /* fall through to Normal */ }
+        return "Normal";
+    }
 }
