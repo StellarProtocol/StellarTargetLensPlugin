@@ -12,6 +12,7 @@ namespace Stellar.TargetLens;
 public sealed partial class Plugin
 {
     private bool _nearbyOn = true;   // config-backed: show the nearby-monster window (default ON)
+    private bool _nearbyTargetableOnly = false;   // config-backed: cap the list by the player's per-class targetable range (default OFF)
 
     // Frame-gated display list: the tracker's Current (or the example while layout-editing with nothing live).
     private int _nearbyDispFrame = -1;

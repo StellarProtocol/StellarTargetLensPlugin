@@ -28,6 +28,7 @@
   "tl.toggle.showThreatTitle": "アグロのタイトルを表示",
   "tl.toggle.showBossTimerTitle": "ボススキルタイマーのタイトルを表示",
   "tl.toggle.showNearbyTitle": "近くのモンスター一覧のタイトルを表示",
+  "tl.toggle.nearbyTargetableOnly": "ターゲット可能な範囲内のみ表示",
   "tl.button.selectEffects": "効果を選択…",
   "tl.desc.selectEffects": "HUDに表示するバフ / デバフを選択します",
   "tl.style.classic": "クラシック（ターゲットHUD内）",

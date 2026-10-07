@@ -28,6 +28,7 @@
   "tl.toggle.showThreatTitle": "Tampilkan judul aggro",
   "tl.toggle.showBossTimerTitle": "Tampilkan judul pengatur waktu bos",
   "tl.toggle.showNearbyTitle": "Tampilkan judul daftar terdekat",
+  "tl.toggle.nearbyTargetableOnly": "Tampilkan hanya dalam jangkauan target",
   "tl.button.selectEffects": "Pilih efek…",
   "tl.desc.selectEffects": "Pilih buff/debuff yang muncul di HUD",
   "tl.style.classic": "Klasik (di HUD Target)",

@@ -28,6 +28,7 @@
   "tl.toggle.showThreatTitle": "Ipakita ang pamagat ng aggro",
   "tl.toggle.showBossTimerTitle": "Ipakita ang pamagat ng mga timer ng boss",
   "tl.toggle.showNearbyTitle": "Ipakita ang pamagat ng listahan ng malapit",
+  "tl.toggle.nearbyTargetableOnly": "Ipakita lang ang nasa saklaw na matitarget",
   "tl.button.selectEffects": "Pumili ng mga epekto…",
   "tl.desc.selectEffects": "Piliin kung aling mga buff/debuff ang lalabas sa HUD",
   "tl.style.classic": "Classic (sa HUD ng Target)",

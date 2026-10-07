@@ -283,6 +283,20 @@ public sealed partial class Plugin
                     }),
                     new TextElement(() => _loc.T("tl.toggle.showNearbyTitle")),
                 }, Gap: 6f),
+                // "Show only in targetable range" — cap the list by the local player's per-class lock range (STRange)
+                // instead of the fixed ~60 m. Pushed into the tracker, which reads TargetableOnly each poll, so the
+                // filter changes live with no window rebuild.
+                new RowElement(new HudElement[]
+                {
+                    new ToggleElement(Label: () => "", Get: () => _nearbyTargetableOnly, Set: v =>
+                    {
+                        _nearbyTargetableOnly = v;
+                        _nearby.TargetableOnly = v;
+                        _cfg.Set<bool>("nearby_targetable_only", v);
+                        _cfg.Save();
+                    }),
+                    new TextElement(() => _loc.T("tl.toggle.nearbyTargetableOnly")),
+                }, Gap: 6f),
                 // Nearby-list size slider (1.0–2.5x). The drag stashes the value + readout; the nearby window is
                 // rebuilt ONCE after the slider settles (SetNearbyScale → TickNearbyScaleRebuild).
                 new RowElement(new HudElement[]

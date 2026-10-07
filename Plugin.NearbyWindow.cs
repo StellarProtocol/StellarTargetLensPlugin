@@ -40,6 +40,10 @@ public sealed partial class Plugin
         _nearbyScale = System.Math.Clamp(_cfg.Get<float>("nearby_scale", 1f), 1f, 2.5f);
         // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
         _showNearbyTitle = _cfg.Get<bool>("show_nearby_title", true);
+        // Cap the list by the player's per-class targetable range instead of the fixed ~60 m (default OFF). Pushed
+        // into the tracker, which reads TargetableOnly each poll — the settings toggle updates it live (no rebuild).
+        _nearbyTargetableOnly = _cfg.Get<bool>("nearby_targetable_only", false);
+        _nearby.TargetableOnly = _nearbyTargetableOnly;
 
         float sc = _nearbyScale;
         float NearbyW = 320f * sc;   // name + HP bar + distance

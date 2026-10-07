@@ -68,6 +68,10 @@ internal sealed partial class NearbyMonsterTracker
     private const long PollIntervalMs = 150;
     private long       _lastPollMs     = 0;   // Environment.TickCount64 of the last real Poll; 0 = never (uptime ≫ interval ⇒ first frame polls)
 
+    // Per-poll distance cap. Default = the fixed MaxDistanceM (~60 m); when the "targetable range only" toggle is on
+    // (NearbyMonsterTracker.TargetableOnly), Poll swaps in the player's resolved per-class STRange (see .Range.cs).
+    private float _activeDistanceCap = MaxDistanceM;
+
     public IReadOnlyList<NearbyEntry> Current
     {
         get
@@ -109,6 +113,11 @@ internal sealed partial class NearbyMonsterTracker
             // our click or by the game's auto-target. Guarded read: 0 on miss / no target. (Write side: SetGameTarget.)
             CurrentTargetUuid = localEnt != null ? ReadAttr(localEnt, _attrTargetIdBox) : 0;
             if (localEnt == null || !TryGetPosition(localEnt, out var localPos)) return;
+
+            // Distance cap for this poll: by default the fixed ~60 m; when the toggle is on, cap by the local player's
+            // actual per-class targetable range (STRange) — resolved cheaply + cached, and ONLY while the toggle is on.
+            if (TargetableOnly) { EnsureTargetableRange(localEnt, localUuid); _activeDistanceCap = TargetableRangeM; }
+            else _activeDistanceCap = MaxDistanceM;
 
             _scratch.Clear();
             _seen.Clear();
@@ -208,7 +217,7 @@ internal sealed partial class NearbyMonsterTracker
 
             if (!TryGetPosition(ent, out var pos)) continue;   // unknown distance → excluded from the capped list
             float dist = Vector3.Distance(pos, localPos);
-            if (dist > MaxDistanceM) continue;
+            if (dist > _activeDistanceCap) continue;   // cap = MaxDistanceM, or the player's STRange when TargetableOnly (see .Range.cs)
 
             _scratch.Add(new NearbyEntry(uuid, name, hp, maxHp, dist, rank));
         }

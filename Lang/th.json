@@ -28,6 +28,7 @@
   "tl.toggle.showThreatTitle": "แสดงหัวข้ออักโกร",
   "tl.toggle.showBossTimerTitle": "แสดงหัวข้อตัวจับเวลาสกิลบอส",
   "tl.toggle.showNearbyTitle": "แสดงหัวข้อรายการมอนสเตอร์ใกล้เคียง",
+  "tl.toggle.nearbyTargetableOnly": "แสดงเฉพาะในระยะที่เล็งเป้าได้",
   "tl.button.selectEffects": "เลือกเอฟเฟกต์…",
   "tl.desc.selectEffects": "เลือกบัฟ / ดีบัฟที่จะแสดงบน HUD",
   "tl.style.classic": "คลาสสิก (ใน HUD เป้าหมาย)",
