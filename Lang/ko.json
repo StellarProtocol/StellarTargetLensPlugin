@@ -51,7 +51,7 @@
   "tl.count.buffs": "{0} / {1} 버프",
   "tl.group.variants": "×{0}",
   "tl.notice.locked": "대상 고정: {0}",
-  "tl.notice.unlocked": "대상 고정 해제",
+  "tl.notice.unlocked": "대상 고정 해제됨",
   "tl.notice.noTarget": "고정할 대상 없음",
   "tl.hotkey.lockTarget": "현재 대상에 HUD 고정"
 }
