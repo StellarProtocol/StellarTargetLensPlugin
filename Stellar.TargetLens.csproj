@@ -18,8 +18,11 @@
   <!-- Framework 2.2.0 ships the BarElement overlay props (Overlay01 / OverlayColor / OverlayInFront) on the
        published NuGet, so the earlier local-source override is gone — compile straight against the packages.
        Stellar.Plugin.InteropRefs has no 2.2.0 (build-assets package, versions independently; unchanged since 2.0.0). -->
+  <!-- Bumped to 2.3.0 for the i18n-ko launcher-tile review fix: LauncherEntry.TitleProvider (live-localized
+       tile title, needed so Title can stay the fixed pin-identity literal) was added in Abstractions 2.3.0 —
+       additive/binary-compatible per framework/CHANGELOG.md [2.3.0]. -->
   <ItemGroup>
-    <PackageReference Include="Stellar.Abstractions"       Version="2.2.0" />
+    <PackageReference Include="Stellar.Abstractions"       Version="2.3.0" />
     <PackageReference Include="Stellar.PluginContracts"    Version="2.2.0" />
     <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.0.0" />
   </ItemGroup>
