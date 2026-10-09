@@ -259,12 +259,16 @@ public sealed partial class Plugin
             OnClose: () => _settingsWindow.SetVisible(false)));
         _windows.Add(_settingsWindow);   // Dispose already loops _windows and Remove()s each
 
+        // Title stays the fixed literal "Target Lens" — the stable pin-identity key (ILauncher.cs:49-50) —
+        // so a pinned tile survives a language change; TitleProvider carries the live-localized display.
         _launcherEntry = _services.Launcher.Register(new LauncherEntry(
-            Title:   _loc.T("tl.settings.title"),
+            Title:   "Target Lens",
             IconPng: LoadIconPng(),
             IconKey: null,
             OnOpen:  () => _settingsWindow.SetVisible(true))
         { Group = LauncherGroup.Plugin,
+          // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
+          TitleProvider = () => _loc.T("tl.settings.title"),
           // Gameplay tool: only surface its launcher tile while in-world.
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World });
     }
