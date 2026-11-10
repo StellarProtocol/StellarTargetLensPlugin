@@ -76,6 +76,13 @@ public sealed partial class Plugin
                                       && _buffStyle == 1
                                       && _targetInfo.Current.HasTarget
                                       && CurEffects().Count > 0),
+                // Framework pre-build (fw 2.30.0): this window is Visible but held hidden by ShouldRender until a
+                // target with effects appears, and its first DRAWN apply built every row (~74 ms). The framework now
+                // fills it off-screen once in the world; with no target every row Conditional is false, so the rows
+                // carry ConditionalElement.Prebuild (below) to get built in that fill too. No PrebuildSignature: the
+                // row pool is fixed (16 slots), so effects arriving later only re-bind built rows. All row getters
+                // are guarded for an empty list (no target).
+                Prebuild = true,
             },
             Root:    BuildBuffListWindowRoot(),
             OnClose: () => { }));
@@ -145,10 +152,12 @@ public sealed partial class Plugin
                     new GameTextureElement(() => GetBuffListIcon(idx), iconPx, iconPx, () => _buffListUv[idx]),
                     Width: cellW),
                 new CellElement(
-                    new ConditionalElement(() => BuffListIsDebuff(idx), debuffBar, buffBar),
+                    // Prebuild: both bar colours built ahead (only the active one would be, lazily).
+                    new ConditionalElement(() => BuffListIsDebuff(idx), debuffBar, buffBar) { Prebuild = true, PrebuildName = "tl.bufflist.bar" },
                     Weight: 1f),
             }, Gap: rowGap);
-            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row);
+            // Prebuild: built in the background even while no row is live (the window pre-build's fill has no target).
+            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
         }
         return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
     }
