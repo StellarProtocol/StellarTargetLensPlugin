@@ -33,12 +33,11 @@ internal sealed partial class TargetInfoTracker
     private MethodInfo? _miGetAttrHate;            // T1: ZEntity.GetAttr<RepeatedField<HateInfo>>(EAttrType,bool)
     private object?     _hateAttrBox;              // boxed EAttrType value 474
 
-    // Player-name read handles (Change 1 — real names off the live entity's AttrName). GetAttr<T> has no string
-    // instantiation on this build, but the object instantiation exists, so the primary name read closes GetAttr<T>
-    // over object and ToString()s the returned IL2CPP object; the native get_Value fallback marshals the string
-    // straight off the GetLuaAttr(1) IAttr wrapper (same wall the shield read hit).
-    private MethodInfo? _miGetAttrObject;          // ZEntity.GetAttr<object>(EAttrType,bool) — name read (technique a)
-    private object?     _attrNameBox;              // boxed EAttrType value 1 (AttrName)
+    // Player-name read (Change 1 — real names off the live entity's AttrName). GetAttr<T> has no string
+    // instantiation on this build, so the name is marshalled natively off the GetLuaAttr(1) IAttr wrapper's get_Value
+    // (same wall the shield read hit). ⚠️ Do NOT close GetAttr<T> over typeof(object): System.Object has no IL2CPP
+    // class pointer, so Il2CppInterop resolves Class::FromIl2CppType(0x20) — it never returned a value (always threw)
+    // and, behind the framework's native fast-path stub, it killed the game with an AccessViolation.
 
     // Cached winning technique for the session (0 = not yet proven). Once a technique returns a non-null list we
     // lock to it — later frames run only that one (a null then just means "no hate list this frame").
@@ -74,18 +73,11 @@ internal sealed partial class TargetInfoTracker
             if (enumType != null)
             {
                 try { _hateAttrBox = Enum.ToObject(enumType, AttrHateListId); } catch { }
-                // AttrName(1) box for the primary player-name read (Change 1).
-                try { _attrNameBox = Enum.ToObject(enumType, AttrNameId); } catch { }
             }
-
-            // GetAttr<object> — closed off the already-resolved open GetAttr<T>, for the string-name read (technique a).
-            if (_miGetAttrLong != null)
-                try { _miGetAttrObject = _miGetAttrLong.GetGenericMethodDefinition().MakeGenericMethod(typeof(object)); }
-                catch (Exception ex) { _services.Log.Warning($"[Threat] GetAttr<object> make failed: {ex.GetType().Name}"); }
 
             _services.Log.Info($"[Threat] interop hateInfo={_hateInfoInteropType != null} " +
                                $"closedRepeated={_closedRepeatedHateType != null} t1Method={_miGetAttrHate != null} " +
-                               $"attrBox={_hateAttrBox != null} nameAttrBox={_attrNameBox != null} getAttrObj={_miGetAttrObject != null}");
+                               $"attrBox={_hateAttrBox != null}");
             return true;
         }
         catch (Exception ex)
@@ -205,25 +197,11 @@ internal sealed partial class TargetInfoTracker
         catch { return null; }
     }
 
-    // ── Player-name reads (Change 1) — the two AttrName techniques the resolution ladder in Threat.cs uses ──
+    // ── Player-name read (Change 1) — the AttrName technique the resolution ladder in Threat.cs uses ──
 
-    // Technique (a): typed GetAttr<object>(EAttrType,bool). The attr is a string on the wire; the object
-    // instantiation exists on this build, so the returned IL2CPP object ToString()s to the display name. Guarded →
-    // "" on any miss (the ladder then tries the native technique, then the non-entity fallbacks).
-    private string ReadAttrString(object ent, object? attrBox)
-    {
-        if (attrBox == null || _miGetAttrObject == null) return "";
-        try
-        {
-            object? r = _miGetAttrObject.Invoke(ent, new object[] { attrBox, true });
-            return r?.ToString() ?? "";
-        }
-        catch { return ""; }
-    }
-
-    // Technique (b): native get_Value on the GetLuaAttr(1) IAttr wrapper, marshalling the returned Il2Cpp string
-    // object straight to managed — the same wall (and the same native path) the shield read broke through. Used
-    // only when technique (a) yields null/empty. Fully guarded → "" on any miss.
+    // Native get_Value on the GetLuaAttr(1) IAttr wrapper, marshalling the returned Il2Cpp string object straight to
+    // managed — the same wall (and the same native path) the shield read broke through. Fully guarded → "" on any
+    // miss (the ladder then tries the non-entity fallbacks).
     private string ReadAttrNameNative(object ent)
     {
         try
