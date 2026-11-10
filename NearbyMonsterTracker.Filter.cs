@@ -155,11 +155,14 @@ internal sealed partial class NearbyMonsterTracker
     // 723/720/724 are stored by the game as INT32 scalar flags, NOT Int64. Reading them through the GetAttr<long>
     // closure makes the game emit `arr type err, type=Int64, enum=AttrCantHit` (Debug.LogError WITH a stack capture)
     // on EVERY read and return default(long)=0 — a Player.log flood on the per-mob Nearby poll AND a silently fail-open
-    // gate (723 always read 0 = "hittable", so nothing was ever dropped). So read them type-erased: GetAttr<object>
-    // (object accepts any boxed type → no Int64 mismatch, no error) then Convert.ToInt64 the boxed value. Mirrors
-    // TargetInfoTracker.ThreatRead's _miGetAttrObject, closed off the already-resolved open GetAttr<T> definition.
+    // gate (723 always read 0 = "hittable", so nothing was ever dropped).
+    // ⚠️ GetAttr<object> is NOT a fix: System.Object has no IL2CPP class pointer, so closing GetAttr<T> over
+    // typeof(object) makes Il2CppInterop resolve Class::FromIl2CppType(0x20) — every call threw (so this gate stayed
+    // fail-open anyway), and behind the framework's native fast-path stub it crashed the game. The closure was removed,
+    // so _miGetAttrObject stays null and ReadAttrObjToInt64 returns 0 (keep) until these reads move to a real
+    // instantiation (GetAttr<int>, as TargetInfoTracker's _miGetAttrInt already uses for the break gauge).
     // HP (AttrHp/AttrMaxHp) is legitimately Int64 and STAYS on _miGetAttrLong (ReadAttr) — do not route it here.
-    private MethodInfo? _miGetAttrObject;   // ZEntity.GetAttr<object>(EAttrType,bool) — targetability int32 reads
+    private MethodInfo? _miGetAttrObject = null;   // unset — see above; targetability int32 reads fail-open
 
     // Dedupe for the validation diagnostic: log the raw 723/720/724 readings once per distinct monster NAME (names
     // are few, so an unbounded set is fine). Cleared on each resolve/scene change (the first-poll-after-resolve latch
@@ -183,13 +186,7 @@ internal sealed partial class NearbyMonsterTracker
             _attrCantHitBox   = Enum.ToObject(attrEnum, AttrCantHitId);
             _attrCanBeHitBox  = Enum.ToObject(attrEnum, AttrCanBeHitId);
             _attrCanHatredBox = Enum.ToObject(attrEnum, AttrCanHatredId);
-
-            // Close the open GetAttr<T> def over object for the int32 targetability reads (see _miGetAttrObject). Called
-            // from EnsureApi AFTER _miGetAttrLong is assigned, so the open def is available; a miss leaves it null →
-            // ReadAttrObjToInt64 returns 0 → fail-open keep (same degrade as the long path).
-            if (_miGetAttrLong != null)
-                try { _miGetAttrObject = _miGetAttrLong.GetGenericMethodDefinition().MakeGenericMethod(typeof(object)); }
-                catch (Exception ex) { _services.Log.Warning($"[Nearby] GetAttr<object> make failed: {ex.GetType().Name}"); }
+            // No GetAttr<object> closure here — see _miGetAttrObject (it crashed the game).
         }
         catch (Exception ex) { _services.Log.Warning($"[Nearby] targetability api resolve error: {ex.Message}"); }
     }
@@ -231,8 +228,8 @@ internal sealed partial class NearbyMonsterTracker
         return _everTargetable.Contains(uuid);
     }
 
-    // Type-agnostic scalar read for the int32 targetability flags (723/720/724). Invokes GetAttr<object> (object
-    // boxes any stored type, so the game does NOT log the Int64 mismatch error the long path triggered) and converts
+    // Type-agnostic scalar read for the int32 targetability flags (723/720/724) through _miGetAttrObject (currently
+    // unset → always 0; see its comment) so the game does NOT log the Int64 mismatch error the long path triggered; converts
     // the boxed value to Int64. Null → 0 and any Convert failure → 0, so a missing/unconvertible attr degrades to
     // "hittable" → fail-open keep, matching ReadAttr's behaviour. NOT for HP — that stays Int64 on ReadAttr.
     private long ReadAttrObjToInt64(object ent, object? attrBox)
