@@ -22,9 +22,9 @@
        tile title, needed so Title can stay the fixed pin-identity literal) was added in Abstractions 2.3.0 —
        additive/binary-compatible per framework/CHANGELOG.md [2.3.0]. -->
   <ItemGroup>
-    <PackageReference Include="Stellar.Abstractions"       Version="2.3.0" />
-    <PackageReference Include="Stellar.PluginContracts"    Version="2.2.0" />
-    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.0.0" />
+    <PackageReference Include="Stellar.Abstractions"       Version="2.30.0" />
+    <PackageReference Include="Stellar.PluginContracts"    Version="2.30.0" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.30.0" />
   </ItemGroup>
 
   <ItemGroup>
