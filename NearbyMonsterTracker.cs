@@ -143,8 +143,6 @@ internal sealed partial class NearbyMonsterTracker
             {
                 _diagLastLocalUuid = localUuid;
                 _bigCandidateLogged = false;
-                _targetabilitySeenNames.Clear();   // re-emit the targetability diagnostic once per name after each resolve/scene change
-                _everTargetable.Clear();           // drop the sticky targetability latch so it never carries stale uuids across encounters
                 _services.Log.Info($"[Nearby] first poll after resolve local={localUuid} candidates={candidates} shown={_cache.Count}");
             }
             if (candidates > BigCandidateWarn && !_bigCandidateLogged)
@@ -201,15 +199,11 @@ internal sealed partial class NearbyMonsterTracker
             long maxHp = ReadAttr(ent, _attrMaxHpBox);
             if (maxHp <= 0 || hp <= 0) continue;   // alive only (dict membership is NOT authoritative death)
 
-            // Resolve the display name + rank ONCE (both fully guarded) now that camp+alive passed, so they can feed
-            // the targetability diagnostic AND the final row entry. Name is also the "is this a real monster" signal:
-            // boss-room helper/trigger/sub-part monsters carry HP + a hostile camp but no display name.
+            // Resolve the display name + rank (both fully guarded) now that camp+alive passed. Name is also the "is
+            // this a real monster" signal: boss-room helper/trigger/sub-part monsters carry HP + a hostile camp but no
+            // display name.
             string name = ResolveMonsterName(ent);
             string rank = ResolveRank(ent);
-
-            // Targetability gate (AttrCantHit=723, inverse flag) + rate-limited validation diagnostic — see .Filter.cs.
-            // Non-zero 723 = immune/untargetable → drop; absent/0/read-miss → keep (fail-open, so normal mobs are safe).
-            if (!PassesTargetabilityGate(ent, uuid, name, rank, hp, maxHp)) continue;
 
             // An unresolved (empty/whitespace) name means a useless nameless row → drop it. The boss and named mobs
             // resolve a real name via entRow_→_base.Name (or the table lookup), so they're unaffected.
@@ -391,7 +385,6 @@ internal sealed partial class NearbyMonsterTracker
             _attrMaxHpBox    = Enum.ToObject(attrEnum, AttrMaxHpId);
             _attrIdBox       = Enum.ToObject(attrEnum, AttrIdId);
             _attrTargetIdBox = Enum.ToObject(attrEnum, AttrTargetIdId);   // for the current-target highlight read (see .Target.cs)
-            ResolveTargetabilityApi(attrEnum);                           // AttrCantHit(723) gate + 720/724 diagnostic boxes (see .Filter.cs)
 
             _piIsBoss  = entType.GetProperty("IsBoss",  pubInst);
             _piIsElite = entType.GetProperty("IsElite", pubInst);
