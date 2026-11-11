@@ -14,6 +14,9 @@ timers, and a live cast bar — all as draggable overlays.
 - **Threat / Aggro** — per-player **threat %** on the current target, with your own row highlighted.
 - **Boss Skill Timers** — live **countdowns** to a boss's deadly/telegraphed skills (the game's DBM data).
 - **Cast bar** — the target's channel/cast progress, counting up, with danger casts accented.
+- **Nearby Monsters** — a separate list window of the enemies around you, each with **name, HP bar and HP %**; bosses and elites are colour-coded.
+  - **Click a row to lock that monster as your target**; your current target is highlighted in blue.
+  - Settings: show/hide the list, toggle its title, **Show only in targetable range**, and list size.
 - **Fully customizable** — every overlay drags & resizes and remembers its place; settings grouped by HUD; localized in **EN / JA / TH / ID / FIL**.
 
 ## Requirements
