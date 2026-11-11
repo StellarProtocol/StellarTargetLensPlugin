@@ -91,17 +91,13 @@ internal sealed partial class NearbyMonsterTracker
                     { _miProfGetTable = m; break; }
                 _piProfStRange = profTbl.GetProperty("STRange", BindingFlags.Public | BindingFlags.Instance);
             }
-
-            _services.Log.Info($"[Nearby] range api attr={_attrProfessionIdBox != null} ppStRange={_fiStRangeStruct != null} " +
-                $"weaponParams(prop={_piWeaponParams != null} field={_fiWeaponParams != null}) " +
-                $"profTbl={_miProfGetTable != null} profStRange={_piProfStRange != null}");
         }
         catch (Exception ex) { _services.Log.Warning($"[Nearby] range api resolve error: {ex.Message}"); }
     }
 
     // Resolve the player's targetable range (STRange), cached. Called from Poll ONLY when TargetableOnly is on, so the
     // reflection never runs for users who leave the toggle off. Re-resolves on local-entity change (scene/char swap)
-    // and every RangeRefreshMs; otherwise leaves the cached TargetableRangeM untouched. Logs once per resolve.
+    // and every RangeRefreshMs; otherwise leaves the cached TargetableRangeM untouched.
     private void EnsureTargetableRange(object? localEnt, long localUuid)
     {
         long now = Environment.TickCount64;
@@ -112,13 +108,10 @@ internal sealed partial class NearbyMonsterTracker
 
         long profId = localEnt != null ? ReadAttr(localEnt, _attrProfessionIdBox) : 0;
 
-        float r; string src;
-        if (TryReadStRangeFromStruct(localEnt, out r))   src = "struct";
-        else if (TryReadStRangeFromTable(profId, out r)) src = "table";
-        else { r = DefaultTargetableRangeM; src = "default"; }
+        if (!TryReadStRangeFromStruct(localEnt, out float r) && !TryReadStRangeFromTable(profId, out r))
+            r = DefaultTargetableRangeM;
 
         TargetableRangeM = r;
-        _services.Log.Info($"[Nearby] targetable range={r:0.#} prof={profId} src={src}");
     }
 
     // Path A: local player ZEntity → TargetComp → weaponParams_ (ProfessionParams) → STRange (float). Returns false on

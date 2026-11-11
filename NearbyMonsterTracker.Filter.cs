@@ -69,8 +69,6 @@ internal sealed partial class NearbyMonsterTracker
             _campFilterActive = _miGetCampWithPlayer != null || fallbackOk;
             if (!_campFilterActive)
                 _services.Log.Warning("[Nearby] camp filter unresolved — showing ALL monsters (no ally exclusion)");
-            _services.Log.Info($"[Nearby] camp filter resolved getCampWithPlayer={_miGetCampWithPlayer != null} " +
-                $"campMgr={fallbackOk} isSummon={_piIsSummon != null} active={_campFilterActive}");
         }
         catch (Exception ex) { _services.Log.Warning($"[Nearby] camp filter resolve error: {ex.Message}"); }
     }

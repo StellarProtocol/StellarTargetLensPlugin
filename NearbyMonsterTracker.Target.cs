@@ -39,7 +39,7 @@ internal sealed partial class NearbyMonsterTracker
     private MethodInfo? _miLockTargetOrCancel; // TargetComp.LockTargetOrCancel() — TOGGLES the hard lock on the current selection
     private MethodInfo? _miCancelLock;         // TargetComp.CancelLock() — releases the hard lock
     private bool        _targetApiResolved;
-    private bool        _lockSetLogged;        // one-line diagnostic on first use / first failure (matches the other logs)
+    private bool        _lockFailLogged;       // rate-limit: warn on the FIRST lock failure only (clicks can repeat fast)
 
     // ── ZWorld.LockTargetUuid — the current HARD-locked uuid (0 = nothing locked); drives the toggle state above. ──
     private Type?         _zworldType;         // Panda.ZGame.ZWorld singleton
@@ -70,23 +70,22 @@ internal sealed partial class NearbyMonsterTracker
             var comp = GetTargetComp(localEnt);   // also resolves the lock methods + ZWorld.LockTargetUuid
             if (comp == null || _miForceSetTarget == null || _miLockTargetOrCancel == null || _miCancelLock == null)
             {
-                if (!_lockSetLogged)
+                if (!_lockFailLogged)
                 {
-                    _lockSetLogged = true;
-                    _services.Log.Info($"[Nearby] lock uuid={uuid} ok=false (comp={comp != null} setter={_miForceSetTarget != null} " +
+                    _lockFailLogged = true;
+                    _services.Log.Warning($"[Nearby] lock unavailable (comp={comp != null} setter={_miForceSetTarget != null} " +
                         $"lock={_miLockTargetOrCancel != null} unlock={_miCancelLock != null})");
                 }
                 return;
             }
 
-            long lockedWas = ApplyHardLock(comp, uuid);
-            if (!_lockSetLogged) { _lockSetLogged = true; _services.Log.Info($"[Nearby] lock uuid={uuid} lockedWas={lockedWas} ok=true"); }
+            ApplyHardLock(comp, uuid);
         }
         catch (Exception ex)
         {
-            if (!_lockSetLogged)
+            if (!_lockFailLogged)
             {
-                _lockSetLogged = true;
+                _lockFailLogged = true;
                 _services.Log.Warning($"[Nearby] lock uuid={uuid} error: {ex.InnerException?.Message ?? ex.Message}");
             }
         }
@@ -95,9 +94,9 @@ internal sealed partial class NearbyMonsterTracker
     // Engage the game's HARD lock on uuid. LockTargetOrCancel is a TOGGLE on the current selection, so the sequence is
     // state-managed off the live ZWorld.LockTargetUuid: re-clicking the already-locked monster releases it; otherwise
     // drop any existing lock first (the toggle would cancel that instead of locking the new one), select this monster,
-    // then toggle the now-unlocked selection ON so it sticks. Returns the uuid that WAS locked (for the diagnostic).
+    // then toggle the now-unlocked selection ON so it sticks.
     // comp + all three methods are guaranteed non-null by the caller.
-    private long ApplyHardLock(object comp, long uuid)
+    private void ApplyHardLock(object comp, long uuid)
     {
         long lockedWas = ReadLockTargetUuid();
         if (lockedWas == uuid)
@@ -111,7 +110,6 @@ internal sealed partial class NearbyMonsterTracker
             _miLockTargetOrCancel!.Invoke(comp, null);               // now-unlocked selection → this hard-locks it
             CurrentTargetUuid = uuid;   // optimistic — the next Poll reconciles against the live AttrTargetId read
         }
-        return lockedWas;
     }
 
     // ZWorld.LockTargetUuid (0 = nothing hard-locked). Mirrors TargetInfoTracker.ReadLockTargetUuid.
@@ -164,9 +162,6 @@ internal sealed partial class NearbyMonsterTracker
                     _zworldType = zworld;
                     _piLockTargetUuid = zworld.GetProperty("LockTargetUuid", BindingFlags.Public | BindingFlags.Instance);
                 }
-
-                _services.Log.Info($"[Nearby] target api tc={tcType != null} getComp={_miGetTargetComp != null} setter={_miForceSetTarget != null} " +
-                    $"lock={_miLockTargetOrCancel != null} unlock={_miCancelLock != null} zworld={_piLockTargetUuid != null}");
             }
             catch (Exception ex) { _services.Log.Warning($"[Nearby] target api resolve error: {ex.Message}"); }
         }

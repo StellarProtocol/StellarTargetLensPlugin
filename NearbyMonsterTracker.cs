@@ -44,11 +44,11 @@ internal sealed partial class NearbyMonsterTracker
 
     private const int   MaxRows      = 8;    // top-N cap (fixed row pool in the window)
     private const float MaxDistanceM = 60f;  // hide anything beyond ~60 m; unknown distance is excluded entirely
-    private const int   BigCandidateWarn = 500;  // an abnormally large scanned-candidate set → log a one-line fingerprint once
+    private const int   BigCandidateWarn = 500;  // an abnormally large scanned-candidate set → warn once per resolve
 
-    // Diagnostic state (rate-limited — never per-frame). A change in the local entity uuid marks a (re)login /
-    // char-select / world-enter / scene resolve; we log the first poll after each, and once per resolve if the
-    // scanned candidate set is abnormally large (the prime suspect for the HUD-freeze regression).
+    // Rate-limit state for the large-candidate warning (never per-frame). A change in the local entity uuid marks a
+    // (re)login / char-select / world-enter / scene resolve and re-arms the one-shot warning — a huge walk is the
+    // prime suspect if the HUDs ever stall the main thread.
     private long _diagLastLocalUuid;
     private bool _bigCandidateLogged;
 
@@ -135,20 +135,18 @@ internal sealed partial class NearbyMonsterTracker
             int n = Math.Min(MaxRows, _scratch.Count);
             for (int i = 0; i < n; i++) _cache.Add(_scratch[i]);
 
-            // Rate-limited fingerprint for the "HUDs freeze after a scene/dungeon/teleport" regression. Log the
-            // FIRST poll after the local entity re-resolves (relogin / char-select / world-enter / scene change),
-            // and once per resolve if the scanned set is abnormally large — a big walk is the prime suspect for a
-            // main-thread stall. Never per-frame (guarded by the resolve latch + the one-shot flag).
+            // Warn once per local-entity resolve (relogin / char-select / world-enter / scene change) if the scanned set
+            // is abnormally large — a big walk is the prime suspect for a main-thread stall. Never per-frame (guarded
+            // by the resolve latch + the one-shot flag).
             if (localUuid != _diagLastLocalUuid)
             {
                 _diagLastLocalUuid = localUuid;
                 _bigCandidateLogged = false;
-                _services.Log.Info($"[Nearby] first poll after resolve local={localUuid} candidates={candidates} shown={_cache.Count}");
             }
             if (candidates > BigCandidateWarn && !_bigCandidateLogged)
             {
                 _bigCandidateLogged = true;
-                _services.Log.Warning($"[Nearby] large candidate set ({candidates}) — throttled walk, shown={_cache.Count} (HUD-freeze regression fingerprint)");
+                _services.Log.Warning($"[Nearby] large candidate set ({candidates}) — throttled walk, shown={_cache.Count}; a walk this big can stall the main thread");
             }
         }
         catch (Exception ex)
@@ -160,7 +158,7 @@ internal sealed partial class NearbyMonsterTracker
     private static int RankOrder(string rank) => rank switch { "Boss" => 0, "Elite" => 1, _ => 2 };
 
     // Walk one dict's .Keys, resolve each entity, filter to alive monsters within range, and append to _scratch.
-    // Returns the number of keys scanned (the candidate count for the diagnostic). Fully guarded — a missing/absent
+    // Returns the number of keys scanned (the candidate count for the large-set warning). Fully guarded — a missing/absent
     // dict just contributes nothing (and 0).
     private int AccumulateDict(object mgr, Func<object, object?>? reader, long localUuid, Vector3 localPos, object? localEnt)
     {
@@ -408,10 +406,11 @@ internal sealed partial class NearbyMonsterTracker
             ResolveCampApi(entType);   // camp-relation ally filter (see .Filter.cs) — independent, fail-open, not required for _apiOk
 
             _apiOk = _piEntMgrStaticInstance != null && _miGetEntity != null && _miGetAttrLong != null && _dictReader != null;
-            _services.Log.Info($"[Nearby] api ok={_apiOk} getEnt={_miGetEntity != null} getAttr={_miGetAttrLong != null} " +
-                $"entInst={_piEntMgrStaticInstance != null} monsterDict={_dictReader != null} bossDict={_bossReader != null} " +
-                $"isBoss={_piIsBoss != null} isElite={_piIsElite != null} model={_piModel != null} goComp={_piModelGoComp != null} " +
-                $"monTbl={_monTblType != null} monGetTable={_miMonGetTable != null} entRow={_fiEntRow != null} baseId={_piBaseId != null}");
+            if (!_apiOk)
+                _services.Log.Warning($"[Nearby] api unresolved getEnt={_miGetEntity != null} getAttr={_miGetAttrLong != null} " +
+                    $"entInst={_piEntMgrStaticInstance != null} monsterDict={_dictReader != null} bossDict={_bossReader != null} " +
+                    $"isBoss={_piIsBoss != null} isElite={_piIsElite != null} model={_piModel != null} goComp={_piModelGoComp != null} " +
+                    $"monTbl={_monTblType != null} monGetTable={_miMonGetTable != null} entRow={_fiEntRow != null} baseId={_piBaseId != null}");
             return _apiOk;
         }
         catch (Exception ex)
