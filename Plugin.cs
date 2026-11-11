@@ -96,6 +96,7 @@ public sealed partial class Plugin : IStellarPlugin
     private void OnTargetHudUpdate(float dt)
     {
         TickTargetTipPlace();
+        TickSettingsUi();   // settings help-popover re-anchor + open-centring bursts (Plugin.Settings.Open.cs)
         TickListScaleRebuild();
         TickThreatScaleRebuild();
         TickCastScaleRebuild();

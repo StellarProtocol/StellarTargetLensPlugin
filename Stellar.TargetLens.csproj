@@ -34,6 +34,8 @@
     <EmbeddedResource Include="Resources\BuffTable.json" LogicalName="Stellar.TargetLens.BuffTable.json" />
     <!-- Nearby Monsters hard-lock padlock: white glyphs pre-drawn per size (tools/gen_lock_icons.py), tinted gold at draw. -->
     <EmbeddedResource Include="Resources/lock-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Settings header crosshair glyph: white, pre-drawn per size (tools/gen_header_icon.py), on the live accent tile. -->
+    <EmbeddedResource Include="Resources/header-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
