@@ -142,8 +142,7 @@ internal sealed partial class TargetInfoTracker
         var ent = GetEntityObj(uuid);
         if (ent != null)
         {
-            string an = ReadAttrString(ent, _attrNameBox);          // technique (a): GetAttr<object>(1).ToString()
-            if (string.IsNullOrEmpty(an)) an = ReadAttrNameNative(ent); // technique (b): native get_Value on GetLuaAttr(1)
+            string an = ReadAttrNameNative(ent);                     // native get_Value on GetLuaAttr(1)
             if (!string.IsNullOrEmpty(an)) return an;
         }
 
