@@ -30,8 +30,6 @@ public sealed partial class Plugin
     private int[][]  _dtFiltMembers = Array.Empty<int[]>();
     private int      _dtFiltCount = 0;
     private string   _dtFilter    = "";
-    private int      _dtOffset    = 0;
-    private readonly UvRect[] _dtUv = new UvRect[SettingsPoolSize];
 
     // ── Buffs tab raw + filtered data ─────────────────────────────────────────
     // Grouped by display Name — see the Debuffs block above.
@@ -46,11 +44,17 @@ public sealed partial class Plugin
     private int[][]  _btFiltMembers = Array.Empty<int[]>();
     private int      _btFiltCount = 0;
     private string   _btFilter    = "";
-    private int      _btOffset    = 0;
-    private readonly UvRect[] _btUv = new UvRect[SettingsPoolSize];
     private bool     _buffTabLoaded = false;
 
-    // ── Lazy loader (idempotent: called from VirtualListElement Count func) ──
+    // ── The ONE list both tabs share (Plugin.SelectWindow.Rows.cs reads the active tab's arrays) ──
+    private int  _selOffset;        // first visible logical row (VirtualListElement OnWindow)
+    private bool _selScrollReset;   // tab switch / new filter → the list jumps back to the top on its next refresh
+    private readonly UvRect[] _selUv = new UvRect[SettingsPoolSize];
+    // Bumped on every change that can flip a group's ticked state or remap rows (toggle, Untick all, a table (re)load, a
+    // re-filter). The per-slot and per-tab ticked caches recompute only when it moved — never per refresh.
+    private int  _selVersion;
+
+    // ── Lazy loader (idempotent: called from the list's Count func while the window is shown) ──
 
     private void EnsureBuffTabLoaded()
     {
@@ -59,6 +63,7 @@ public sealed partial class Plugin
         _buffTabLoaded = _dtCount > 0 || _btCount > 0;
         if (_dtCount > 0) ApplyDebuffTabFilter(_dtFilter);
         if (_btCount > 0) ApplyBuffTabFilter(_btFilter);
+        _selVersion++;
     }
 
     // ── Table loader ────────────────────────────────────────────────────────
@@ -150,15 +155,15 @@ public sealed partial class Plugin
 
     private void ApplyDebuffTabFilter(string text)
     {
-        _dtFilter = text; _dtOffset = 0;
-        SettingsFilterGroups(text, _dtIds, _dtNames, _dtDescs, _dtMembers, _dtCount, _selection.IsDebuffTracked,
+        _dtFilter = text ?? ""; _selScrollReset = true; _selVersion++;
+        SettingsFilterGroups(_dtFilter, _dtIds, _dtNames, _dtDescs, _dtMembers, _dtCount, _selection.IsDebuffTracked,
             out _dtFiltIds, out _dtFiltNames, out _dtFiltDescs, out _dtFiltMembers, out _dtFiltCount);
     }
 
     private void ApplyBuffTabFilter(string text)
     {
-        _btFilter = text; _btOffset = 0;
-        SettingsFilterGroups(text, _btIds, _btNames, _btDescs, _btMembers, _btCount, _selection.IsBuffTracked,
+        _btFilter = text ?? ""; _selScrollReset = true; _selVersion++;
+        SettingsFilterGroups(_btFilter, _btIds, _btNames, _btDescs, _btMembers, _btCount, _selection.IsBuffTracked,
             out _btFiltIds, out _btFiltNames, out _btFiltDescs, out _btFiltMembers, out _btFiltCount);
     }
 

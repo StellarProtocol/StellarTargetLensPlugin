@@ -30,7 +30,9 @@ public sealed partial class Plugin
     private const float NeutralAccentMix = 0.08f;   // … + an 8% accent tint, like the tiles
     private const float PillMinContrast  = 4.5f;    // tinted fills (Neutral) keep 4.5:1 labels
     private const float SolidMinContrast = 3.0f;    // accent text on its own wash / white on a solid accent tile: 3:1
-    private const float AccentWashAlpha  = 0.22f;   // "on" chip = 22% accent wash
+    private const float AccentWashAlpha  = 0.22f;   // "on" chip / ticked row = 22% accent wash
+    private const float FlashWashAlpha   = 0.28f;   // the clicked row's green flash (house rule 13)
+    private const float DangerWashAlpha  = 0.18f;   // a row the HUD HIDES ("All except ticked" picker mode)
     private const float HoverMix         = 0.10f;   // hover = 10% MenuText over the fill
 
     private static readonly ColorRgba Transparent = new(0f, 0f, 0f, 0f);
@@ -48,6 +50,16 @@ public sealed partial class Plugin
                                             Over(Menu.MenuMuted with { A = NeutralMix }, PanelColor()));
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
     private ColorRgba HoverFill(ColorRgba fill) => Over(Menu.MenuText with { A = HoverMix }, fill);
+
+    // Status colours from the theme (IThemeStatusColors, fw 2.30.0) — the dark presets return the house #5fd38d /
+    // #ff4d4f / #ffcc73, Light and custom themes their own.
+    private ColorRgba SuccessColor() => Menu.Success;
+    private ColorRgba DangerColor()  => Menu.Danger;
+    private ColorRgba CautionColor() => Menu.Caution;
+    // Caution: a TINTED amber pill (the amber chip wash, opaque over the panel) — "Untick all" only changes MY HUD, so it
+    // sits one step below a solid Danger (severity ladder R8). The amber label is pushed to 4.5:1 against that fill.
+    private ColorRgba CautionFill() => Over(Menu.Caution with { A = AccentWashAlpha }, PanelColor());
+    private ColorRgba CautionText() => EnsureContrast(Menu.Caution, CautionFill(), PillMinContrast);
 
     // ── window opacity: EVERY coloured fill follows the window opacity, uniformly ──────────────────────────────────
     // The framework fades ONLY the GlassMenu frame Image (Themes → Window Opacity, IChromeStyle.WindowOpacity); every
@@ -131,28 +143,34 @@ public sealed partial class Plugin
     // ── pill buttons ──────────────────────────────────────────────────────────────────────────────────────────────
     // ONE build for every labelled button: a fill-tinted Bubble around a Bare SelectableElement, 28 px tall (the 28 px
     // struts either side of a bold-13 label). The label box is FIXED (`width` = the longest label in any locale, house
-    // rule 10) so a language switch never resizes the pill.
-    private HudElement PillButton(Func<string> label, Func<ColorRgba> fill, Func<ColorRgba> text, Action onClick, float width)
+    // rule 10) so a language switch never resizes the pill. `enabled` (optional, polled): false = rule 22 RECESSED (sunken
+    // fill + faint label, same size), click swallowed, no hover — the pills sit on a panel, so the panel is the surface.
+    private HudElement PillButton(Func<string> label, Func<ColorRgba> fill, Func<ColorRgba> text, Action onClick, float width,
+        Func<bool>? enabled = null)
     {
         var hover = new HoverFlag();
+        bool En() => enabled == null || enabled();
         return new BubbleElement(new SelectableElement(
             new RowElement(new HudElement[]
             {
                 new SpacerElement(PillPadX, PillHeight),
-                DropBold(new TextElement(label, Color: () => text(),
+                DropBold(new TextElement(label, Color: () => En() ? text() : DisabledLabel(PanelColor()),
                     Width: width, Align: TextAlign.Center, NoWrap: true, FontSize: 13) { Bold = true, Ellipsize = true }),
                 new SpacerElement(PillPadX, PillHeight),
             }, Gap: 0.01f, Justify: RowJustify.Center),
-            OnClick: onClick)
+            OnClick: () => { if (En()) onClick(); })
             { Bare = true, OnHover = over => hover.On = over })
         {
-            FillColorFn = () => Fade(hover.On ? HoverFill(fill()) : fill()),
+            FillColorFn = () => Fade(!En() ? DisabledFill(PanelColor()) : hover.On ? HoverFill(fill()) : fill()),
             CornerRadius = RoundRadius(PillHeight), PaddingX = 0f, PaddingY = 0f,
         };
     }
 
     private HudElement NeutralButton(Func<string> label, Action onClick, float width) =>
         PillButton(label, NeutralFill, NeutralText, onClick, width);
+
+    private HudElement CautionButton(Func<string> label, Action onClick, float width, Func<bool>? enabled = null) =>
+        PillButton(label, CautionFill, CautionText, onClick, width, enabled);
 
     // ── section panel ─────────────────────────────────────────────────────────────────────────────────────────────
     // A rounded panel (background darkened, live): bold 12 UPPERCASE caption (Text colour, as in the approved prototype)

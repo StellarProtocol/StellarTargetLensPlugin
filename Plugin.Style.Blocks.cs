@@ -129,6 +129,43 @@ public sealed partial class Plugin
     private static SliderElement RoundSlider(Func<float> get, Action<float> set, float min, float max, Func<bool>? enabled)
         => new(get, set, min, max, enabled) { SquareHandle = true, HandleSize = SliderKnobSize, Width = SliderTrackW };
 
+    // ── filled list rows ──────────────────────────────────────────────────────────────────────────────────────────
+    // House rule 15: the VirtualList slot STRETCHES its child to RowHeight, so a filled 26 px tile with RowHeight 28 gets
+    // no gap. The pooled element is Column[tile, 2 px spacer] instead, whose preferred height IS the 28 px pitch.
+    private const float ListTileHeight = 26f;
+    private const float ListRowGap     = 2f;
+    private const float ListRowPitch   = ListTileHeight + ListRowGap;   // the VirtualList RowHeight
+
+    private static HudElement ListSlot(HudElement tile) => new ColumnElement(new HudElement[]
+    {
+        tile,
+        new SpacerElement(0f, ListRowGap),
+    }, Gap: 0.01f);
+
+    // Viewport height that shows exactly `rows` rows: the last row's 2 px gap falls outside, so the list ends on a tile.
+    private static float ListHeight(int rows) => rows * ListRowPitch - ListRowGap;
+
+    // ── round icon button ─────────────────────────────────────────────────────────────────────────────────────────
+    // A 28 × 28 circle (Neutral fill, lighter on hover) around a Bare selectable with a centred PLAIN glyph ("✕" can draw
+    // blank in bold). Exactly its side: one Row[28 px strut, a 28 px-wide glyph box] (house rule 4). StatInspector port.
+    private const float IconButtonSize = 28f;
+
+    private HudElement IconButton(Func<string> glyph, Action onClick)
+    {
+        var hover = new HoverFlag();
+        return new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
+            {
+                new SpacerElement(0f, IconButtonSize),
+                new TextElement(glyph, Color: () => hover.On ? NeutralText() : MutedText(), Width: IconButtonSize,
+                    Align: TextAlign.Center, NoWrap: true),
+            }, Gap: 0.01f, Justify: RowJustify.Center),
+            OnClick: onClick) { Bare = true, OnHover = over => hover.On = over })
+        {
+            FillColorFn = () => Fade(hover.On ? HoverFill(NeutralFill()) : NeutralFill()),
+            CornerRadius = RoundRadius(IconButtonSize), PaddingX = 0f, PaddingY = 0f,
+        };
+    }
+
     // ── cached formatter ──────────────────────────────────────────────────────────────────────────────────────────
     // A localized template + up to two numbers → the composed string, rebuilt only when the template (a language
     // switch) or a number changes. The text Funcs poll every refresh; this keeps them allocation-free in steady state.

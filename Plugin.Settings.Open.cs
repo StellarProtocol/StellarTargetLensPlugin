@@ -8,6 +8,7 @@ namespace Stellar.TargetLens;
 /// Opening the Settings window and the effect picker, house style (Stellar Design Language §5 "Open = OpenCentred"):
 /// show → <c>BringToFront()</c> → centre for a short burst of ticks. Settings opens from the desktop launcher (outside the
 /// plugin) → centred on the SCREEN; "Select effects…" opens the picker centred on the Settings window it came from.
+/// The picker's own close (title-bar ✕) is CloseSelectEffects in Plugin.SelectWindow.cs.
 /// Always fronted: the picker may already be visible behind Settings when its button is pressed (a visible window
 /// doesn't remount, so it wouldn't come up on its own — CLAUDE.md Rule 5 exception), and the help popover is fronted on
 /// every open, so every open path fronts too.
@@ -91,19 +92,22 @@ public sealed partial class Plugin
         CloseHelp();
     }
 
-    // "Select effects…" → the existing effect picker (Plugin.SelectWindow.cs, unchanged), centred on Settings + front.
+    // "Select effects…" → the effect picker (Plugin.SelectWindow.cs), centred on Settings + front. Fixed height, so the
+    // burst can centre it before the first layout reports one.
     private void OpenSelectEffects()
     {
         _selectWindow.SetVisible(true);
         _selectWindow.BringToFront();
-        (_selectCentre ??= new CentreBurst(_selectWindow, () => _settingsWindow, _services.Framework, 0f)).Start();
+        (_selectCentre ??= new CentreBurst(_selectWindow, () => _settingsWindow, _services.Framework, SelectWindowHeight)).Start();
     }
 
-    // OnTargetHudUpdate: the help popover re-anchor + both centring bursts. Each is a single int compare when idle.
+    // OnTargetHudUpdate: the help popover re-anchor, both centring bursts and the picker's confirm timeout. Each is a
+    // single compare when idle.
     private void TickSettingsUi()
     {
         HelpRepositionTick();
         _settingsCentre?.Tick();
         _selectCentre?.Tick();
+        AdvanceUntickConfirm();   // Plugin.SelectWindow.Feedback.cs
     }
 }
