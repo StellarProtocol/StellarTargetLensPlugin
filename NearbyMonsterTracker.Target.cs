@@ -41,9 +41,19 @@ internal sealed partial class NearbyMonsterTracker
     private bool        _targetApiResolved;
     private bool        _lockFailLogged;       // rate-limit: warn on the FIRST lock failure only (clicks can repeat fast)
 
-    // ── ZWorld.LockTargetUuid — the current HARD-locked uuid (0 = nothing locked); drives the toggle state above. ──
+    // ── ZWorld.LockTargetUuid — the current HARD-locked uuid (0 = nothing locked); drives the toggle state above AND
+    //    the row padlock. Resolved in EnsureApi (ResolveLockApi) so the read side has it without a prior click. ──
     private Type?         _zworldType;         // Panda.ZGame.ZWorld singleton
-    private PropertyInfo? _piLockTargetUuid;   // ZWorld.LockTargetUuid getter
+    private PropertyInfo? _piLockTargetUuid;   // ZWorld.LockTargetUuid getter (fallback path)
+    private Func<object?>?      _getZWorld;    // bound static ZSingleton<ZWorld>.Instance getter (null → GetSingleton)
+    private Func<object, long>? _getLockUuid;  // bound open-instance LockTargetUuid getter (null → GetValue)
+
+    /// <summary>
+    /// The game's HARD-locked target uuid (<c>ZWorld.LockTargetUuid</c>; 0 = none) — the lock-on from either the
+    /// game's lock key or a row click. Read ONCE per Poll (≤~6.7 Hz, see <c>PollIntervalMs</c>), never per row/frame;
+    /// the window compares each row against it to show the gold padlock.
+    /// </summary>
+    public long LockedTargetUuid { get; private set; }
 
     /// <summary>
     /// HARD-lock the player's in-game combat target to <paramref name="uuid"/> (the game's lock-on, so it sticks
@@ -67,7 +77,7 @@ internal sealed partial class NearbyMonsterTracker
             var localEnt = GetEntityObj(mgr, localUuid);
             if (localEnt == null) return;
 
-            var comp = GetTargetComp(localEnt);   // also resolves the lock methods + ZWorld.LockTargetUuid
+            var comp = GetTargetComp(localEnt);   // also resolves the lock methods (ZWorld.LockTargetUuid: EnsureApi)
             if (comp == null || _miForceSetTarget == null || _miLockTargetOrCancel == null || _miCancelLock == null)
             {
                 if (!_lockFailLogged)
@@ -102,6 +112,7 @@ internal sealed partial class NearbyMonsterTracker
         if (lockedWas == uuid)
         {
             _miCancelLock!.Invoke(comp, null);                       // clicked the already-locked monster → toggle lock OFF
+            LockedTargetUuid = 0;       // optimistic padlock — the next Poll reconciles against ZWorld.LockTargetUuid
         }
         else
         {
@@ -109,19 +120,57 @@ internal sealed partial class NearbyMonsterTracker
             _miForceSetTarget!.Invoke(comp, new object[] { uuid });  // make this monster the current selection
             _miLockTargetOrCancel!.Invoke(comp, null);               // now-unlocked selection → this hard-locks it
             CurrentTargetUuid = uuid;   // optimistic — the next Poll reconciles against the live AttrTargetId read
+            LockedTargetUuid  = uuid;   // optimistic padlock — likewise reconciled against ZWorld.LockTargetUuid
         }
     }
 
-    // ZWorld.LockTargetUuid (0 = nothing hard-locked). Mirrors TargetInfoTracker.ReadLockTargetUuid.
+    // ZWorld.LockTargetUuid (0 = nothing hard-locked). Runs every Poll, so it goes through the bound delegates (no
+    // PropertyInfo.GetValue object[]/long box per read — Plugin-Performance-Rules §2); the reflection path is only the
+    // fallback if binding failed. Same value TargetInfoTracker.ReadLockTargetUuid reads.
     private long ReadLockTargetUuid()
     {
         if (_zworldType == null || _piLockTargetUuid == null) return 0;
         try
         {
-            var inst = StellarInterop.GetSingleton(_zworldType);
-            return inst == null ? 0 : Convert.ToInt64(_piLockTargetUuid.GetValue(inst) ?? 0L);
+            var inst = _getZWorld != null ? _getZWorld() : StellarInterop.GetSingleton(_zworldType);
+            if (inst == null) return 0;
+            return _getLockUuid != null ? _getLockUuid(inst) : Convert.ToInt64(_piLockTargetUuid.GetValue(inst) ?? 0L);
         }
         catch { return 0; }
+    }
+
+    // Resolve ZWorld + LockTargetUuid once (from EnsureApi) and bind both getters into delegates. Fail-open: any miss
+    // just leaves the padlock off and the click toggle treating "nothing locked".
+    private void ResolveLockApi()
+    {
+        try
+        {
+            var zworld = StellarInterop.FindType("Panda.ZGame.ZWorld");
+            if (zworld == null) return;
+            _zworldType = zworld;
+            _piLockTargetUuid = zworld.GetProperty("LockTargetUuid", BindingFlags.Public | BindingFlags.Instance);
+
+            // Static Instance lives on the generic base ZSingleton<ZWorld> → FlattenHierarchy. Func<object> binds by
+            // reference-return covariance; a static getter needs no target.
+            var inst = zworld.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetGetMethod();
+            if (inst != null && !inst.ReturnType.IsValueType)
+                try { _getZWorld = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), inst); } catch { _getZWorld = null; }
+
+            var g = _piLockTargetUuid?.GetGetMethod();
+            if (g != null && !g.IsStatic && g.ReturnType == typeof(long) && !zworld.IsValueType)
+                _getLockUuid = (Func<object, long>?)typeof(NearbyMonsterTracker)
+                    .GetMethod(nameof(MakeLongGetter), BindingFlags.NonPublic | BindingFlags.Static)!
+                    .MakeGenericMethod(g.DeclaringType!).Invoke(null, new object[] { g });
+        }
+        catch (Exception ex) { _services.Log.Warning($"[Nearby] lock api resolve error: {ex.Message}"); }
+    }
+
+    // Open-instance delegate over an interop long getter, wrapped once as Func<object, long> (one cast + one call per
+    // read). Mirrors RaidManager MechanicCalloutTracker.MakeTypedGetter.
+    private static Func<object, long> MakeLongGetter<T>(MethodInfo getter) where T : class
+    {
+        var d = (Func<T, long>)Delegate.CreateDelegate(typeof(Func<T, long>), getter);
+        return o => d((T)o);
     }
 
     // Resolve ZEntity.GetComponent<TargetComp>() (closed generic) + TargetComp.ForceSetTarget(long) once off the live
@@ -154,14 +203,7 @@ internal sealed partial class NearbyMonsterTracker
                         else if (m.Name == "LockTargetOrCancel" && ps.Length == 0) _miLockTargetOrCancel = m;
                         else if (m.Name == "CancelLock" && ps.Length == 0) _miCancelLock = m;
                     }
-
-                // ZWorld.LockTargetUuid (get-only long) — current hard-locked uuid; state for the LockTargetOrCancel toggle.
-                var zworld = StellarInterop.FindType("Panda.ZGame.ZWorld");
-                if (zworld != null)
-                {
-                    _zworldType = zworld;
-                    _piLockTargetUuid = zworld.GetProperty("LockTargetUuid", BindingFlags.Public | BindingFlags.Instance);
-                }
+                // ZWorld.LockTargetUuid (the toggle state) is resolved by EnsureApi → ResolveLockApi, which ran first.
             }
             catch (Exception ex) { _services.Log.Warning($"[Nearby] target api resolve error: {ex.Message}"); }
         }

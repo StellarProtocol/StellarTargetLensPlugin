@@ -17,6 +17,7 @@ public sealed partial class Plugin
     // Frame-gated display list: the tracker's Current (or the example while layout-editing with nothing live).
     private int _nearbyDispFrame = -1;
     private readonly List<NearbyMonsterTracker.NearbyEntry> _nearbyDisp = new();
+    private bool _nearbyDispIsExample;   // _nearbyDisp currently holds ExampleNearby (layout edit, nothing live)
 
     // Representative sample shown while the layout editor is active and no monsters are nearby (mirrors ExampleThreat).
     private static readonly NearbyMonsterTracker.NearbyEntry[] ExampleNearby =
@@ -39,8 +40,9 @@ public sealed partial class Plugin
             var live = _nearby.Current;   // may resolve a (throttled) poll — do this BEFORE touching _nearbyDisp
             _nearbyDispFrame = f;
             _nearbyDisp.Clear();
+            _nearbyDispIsExample = false;
             if (live.Count > 0) { _nearbyDisp.AddRange(live); return _nearbyDisp; }
-            if (_services.Windows.IsLayoutEditing) _nearbyDisp.AddRange(ExampleNearby);
+            if (_services.Windows.IsLayoutEditing) { _nearbyDisp.AddRange(ExampleNearby); _nearbyDispIsExample = true; }
             return _nearbyDisp;
         }
         catch
@@ -69,6 +71,50 @@ public sealed partial class Plugin
     {
         long u = NearbyUuid(idx);
         return u != 0 && u == _targetInfo.Current.Uuid;
+    }
+
+    // True when this row is the game's HARD-locked target (ZWorld.LockTargetUuid — the lock-on from either the game's
+    // lock key or a row click). Compares against the tracker's once-per-Poll LockedTargetUuid, never a per-row game read.
+    // While the layout editor shows the example rows, the first one wears the padlock so the slot can be judged.
+    private bool NearbyIsLocked(int idx)
+    {
+        long u = NearbyUuid(idx);
+        if (u == 0) return false;
+        if (_nearbyDispIsExample) return u == ExampleNearby[0].Uuid;
+        return u == _nearby.LockedTargetUuid;
+    }
+
+    // Padlock glyphs: WHITE, pre-drawn + pixel-hinted per size (tools/gen_lock_icons.py → Resources/lock-<N>.png; house
+    // rule: never one master scaled down). Even sizes only (grid-aligned centring in the row). The window picks the one
+    // nearest round(14 × List size) at build time.
+    private static readonly int[] NearbyLockSizes = { 14, 16, 18, 20, 24, 28, 32, 36 };
+    private static readonly byte[]?[] NearbyLockPngs = new byte[]?[NearbyLockSizes.Length];
+
+    private static int NearbyLockPx(float sc)
+    {
+        float want = 14f * sc;
+        int best = NearbyLockSizes[0];
+        foreach (int n in NearbyLockSizes)
+            if (Math.Abs(n - want) < Math.Abs(best - want)) best = n;
+        return best;
+    }
+
+    // Embedded PNG for one of NearbyLockSizes, read once and cached (ImageElement may re-pull the Func — always hand
+    // back the same array). Null on a missing resource → the framework just draws nothing in the slot.
+    private static byte[]? NearbyLockPng(int px)
+    {
+        int i = Array.IndexOf(NearbyLockSizes, px);
+        if (i < 0) return null;
+        if (NearbyLockPngs[i] != null) return NearbyLockPngs[i];
+        try
+        {
+            using var s = typeof(Plugin).Assembly.GetManifestResourceStream($"Stellar.TargetLens.lock-{px}.png");
+            if (s == null) return null;
+            using var ms = new System.IO.MemoryStream();
+            s.CopyTo(ms);
+            return NearbyLockPngs[i] = ms.ToArray();
+        }
+        catch { return null; }
     }
 
     // Monster name — rendered as the HP bar's inside-LEFT primary label (Plugin.NearbyWindow.cs). The framework's
@@ -115,7 +161,8 @@ public sealed partial class Plugin
         float rowGap    = 6f * sc;
         const float colPad = 16f;                            // ColumnElement Padding (8 each side, unscaled at build)
         const float insets = 10f;                            // AddOverlayText's 5px left+right inset inside the track
-        float barTrack  = w - colPad - distCellW - rowGap;   // the bar cell's width (Weight:1 fills the rest of the row)
+        float lockSlotW = NearbyLockPx(sc);                  // fixed padlock slot (always present, even when empty)
+        float barTrack  = w - colPad - lockSlotW - distCellW - 2f * rowGap;   // the bar cell's width (Weight:1 fills the rest of the row)
         float pctReserve = 4f * fontPx * 0.65f + 8f;         // keep clear of the right-side HP% ("100%" worst case) + a gap
         float avail = barTrack - insets - pctReserve - fontPx /*ellipsis*/ - 6f /*slack*/;
         if (avail <= 0f) return "…";

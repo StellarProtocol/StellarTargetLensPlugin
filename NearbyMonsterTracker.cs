@@ -98,6 +98,7 @@ internal sealed partial class NearbyMonsterTracker
         {
             if (!_services.ClientState.IsLoggedIn) return;
             if (!EnsureApi()) return;
+            LockedTargetUuid = ReadLockTargetUuid();   // once per poll (bound getters, see .Target.cs) — drives the row padlock
 
             long localUuid = _services.CombatSnapshot.LocalEntityId.Value;
             if (localUuid == 0) return;
@@ -404,6 +405,7 @@ internal sealed partial class NearbyMonsterTracker
             }
 
             ResolveCampApi(entType);   // camp-relation ally filter (see .Filter.cs) — independent, fail-open, not required for _apiOk
+            ResolveLockApi();          // ZWorld.LockTargetUuid for the row padlock (see .Target.cs) — independent, fail-open
 
             _apiOk = _piEntMgrStaticInstance != null && _miGetEntity != null && _miGetAttrLong != null && _dictReader != null;
             if (!_apiOk)

@@ -4,7 +4,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 // Standalone NEARBY MONSTERS overlay — a borderless auto-showing HUD window listing the nearest alive monsters,
-// each as a row: [Modern HP bar — name inside-left, HP% inside-right] [distance]. Bosses/elites sort first, then by distance ascending;
+// each as a row: [Modern HP bar — name inside-left, HP% inside-right] [hard-lock padlock slot] [distance]. Bosses/elites sort first, then by distance ascending;
 // capped at NearbySlots rows and hidden beyond ~60 m (see NearbyMonsterTracker). Mirrors the boss-timer window:
 // width- AND (now) height-resizable, a debounced row-size slider, layout-edit example rows so it can be placed
 // without a live encounter, and gated by ShouldRender on the toggle + a non-empty list.
@@ -30,6 +30,8 @@ public sealed partial class Plugin
     private static readonly ColorRgba NearbyBossColor   = new(0.93f, 0.23f, 0.20f, 1f);  // red — boss rank fill
     private static readonly ColorRgba NearbyEliteColor  = new(0.95f, 0.55f, 0.15f, 1f);  // dark orange — elite rank fill
     private static readonly ColorRgba NearbyTargetColor = new(0.30f, 0.60f, 0.95f, 1f);  // azure — current-target fill (overrides rank; white name/HP% stay readable)
+    private static readonly ColorRgba NearbyLockGold    = new(1.00f, 0.82f, 0.40f, 1f);  // #ffd166 — hard-lock padlock tint (white glyph)
+    private static readonly ColorRgba NearbyLockClear   = new(1f, 1f, 1f, 0f);           // padlock slot when not locked: fully transparent
 
     private void RegisterNearbyWindow()
     {
@@ -138,7 +140,7 @@ public sealed partial class Plugin
         RebuildNearbyWindow();
     }
 
-    // Title + a fixed pool of NearbySlots rows. Each row = [Modern HP bar — name inside-left, HP% inside-right] [distance].
+    // Title + a fixed pool of NearbySlots rows. Each row = [Modern HP bar — name inside-left, HP% inside-right] [padlock] [distance].
     // Rows collapse to zero height when they have no live entry (ConditionalElement on NearbyRowVisible). Row dimensions scale together
     // by _nearbyScale; the TITLE is kept at a fixed size (excluded from scaling) so only the rows grow.
     private HudElement BuildNearbyWindowRoot()
@@ -148,6 +150,8 @@ public sealed partial class Plugin
         float barH     = 20f * sc;   // row content height (Modern bar + inside-label line box) — midpoint of 18 (squished) and 22 (too tall)
         int   barFont  = (int)System.Math.Round(12 * sc);   // the bar's LabelFontSize — drives BOTH inside labels (name + HP%) and the distance text
         float distCellW = 44f * sc;
+        int   lockPx   = NearbyLockPx(sc);       // padlock glyph + its slot width: nearest pre-drawn size to 14 × sc
+        var   lockPng  = NearbyLockPng(lockPx);  // cached bytes; null (missing resource) → slot stays clear
         float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
         // Vertical gap BETWEEN rows. NEGATIVE on purpose. Each row is wrapped in a SelectableElement (click-to-target),
         // whose framework-fixed host VLG adds RectOffset(6,6,4,4) = 8px of vertical padding (4 top + 4 bottom) around the
@@ -194,6 +198,18 @@ public sealed partial class Plugin
                     { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
                       LabelInside = true, FillColorFn = () => NearbyIsTarget(idx) ? (ColorRgba?)NearbyTargetColor : NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
                     Weight: 1f),
+                // Hard-lock slot: FIXED width, always present — the padlock only toggles its tint (gold ↔ fully clear),
+                // so the bar never changes width when a lock engages/releases (no layout jump). Hard lock = the game's
+                // lock-on (ZWorld.LockTargetUuid) from either the lock key or a row click. The Row wrapper keeps the
+                // square glyph from being width-stretched by the cell (WindowBuilder-Patterns: cell force-expands width)
+                // and centres it; the outer row centres it vertically.
+                new CellElement(
+                    new RowElement(new HudElement[]
+                    {
+                        new ImageElement(() => lockPng!, lockPx, lockPx)
+                        { Tint = () => lockPng != null && NearbyIsLocked(idx) ? NearbyLockGold : NearbyLockClear },
+                    }, Gap: 0f, Justify: RowJustify.Center),
+                    Width: lockPx),
                 new CellElement(
                     new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
                     Width: distCellW),

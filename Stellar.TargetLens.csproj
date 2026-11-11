@@ -32,6 +32,8 @@
     <!-- English-translated buff name/description dump (game data is Chinese). Loaded by TranslatedBuffText.
          Kept inside the project's Resources/ (colocated with the icon) so it can't be lost as a loose Mod-root file. -->
     <EmbeddedResource Include="Resources\BuffTable.json" LogicalName="Stellar.TargetLens.BuffTable.json" />
+    <!-- Nearby Monsters hard-lock padlock: white glyphs pre-drawn per size (tools/gen_lock_icons.py), tinted gold at draw. -->
+    <EmbeddedResource Include="Resources/lock-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
