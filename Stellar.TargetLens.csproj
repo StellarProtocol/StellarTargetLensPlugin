@@ -1,4 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
+
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -24,11 +26,6 @@
     <PackageReference Include="Stellar.PluginContracts"    Version="2.30.0" />
     <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.30.0" />
   </ItemGroup>
-
-  <!-- Local overrides: deploy target, game paths, and (while unreleased) a local Stellar.Abstractions reference
-       that carries BarElement.LabelColorFn — all in Local.props (gitignored). Imported AFTER the PackageReferences
-       so a `PackageReference Remove` in Local.props can take effect (mirrors StellarRaidManagerPlugin). -->
-  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
 
   <ItemGroup>
     <EmbeddedResource Include="Resources/targetlens-icon.png" LogicalName="Stellar.TargetLens.targetlens-icon.png" />
