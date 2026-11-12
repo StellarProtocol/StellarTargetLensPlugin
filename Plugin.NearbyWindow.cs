@@ -228,8 +228,16 @@ public sealed partial class Plugin
             // the selectable permanently ACTIVE with `bg.raycastTarget=true` + a full-width LayoutElement + a ≥8px VLG
             // padding floor over a 0-height child → an invisible full-width strip that eats WORLD clicks. No BringToFront
             // (opens from hidden in its own HUD ZCat) or FrontWindowBlocks (the ticker owns the selectable's hit-testing).
+            //
+            // ⚠️ Click is a no-op on the layout-editor sample rows (ExampleNearby, synthetic uuids 1..4) and, as
+            // defence-in-depth, during any layout edit: SetGameTarget would ForceSetTarget + LockTargetOrCancel a uuid
+            // that names no entity, and the game NREs inside TargetComp.fillSelectData (seen live with uuid=1).
             var selectable = new SelectableElement(row,
-                OnClick: () => _nearby.SetGameTarget(NearbyUuid(idx)),
+                OnClick: () =>
+                {
+                    if (_nearbyDispIsExample || _services.Windows.IsLayoutEditing) return;
+                    _nearby.SetGameTarget(NearbyUuid(idx));
+                },
                 Selected: () => NearbyIsTarget(idx));
             rows[s + 1] = new ConditionalElement(() => NearbyRowVisible(idx), selectable);
         }
