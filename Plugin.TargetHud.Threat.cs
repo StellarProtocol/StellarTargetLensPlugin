@@ -19,14 +19,6 @@ public sealed partial class Plugin
     // holder), 1 = Aggro List (Top-N + the local player's own appended row — the default / original behaviour).
     private int _threatMode = 1;
 
-    // Dropdown option order MUST match the mode ints above (index 0 = Top aggro, 1 = Aggro List). Built fresh from the
-    // loc catalog each call so the labels follow the active language (the dropdown's Options provider re-invokes it).
-    private string[] ThreatModeOptions() => new[]
-    {
-        _loc.T("tl.threatMode.top"),
-        _loc.T("tl.threatMode.list"),
-    };
-
     private const int   ThreatTopN   = 4;      // number of highest-aggro rows shown
     private const int   ThreatSlots   = ThreatTopN + 1; // + 1 for the local player's appended row
 

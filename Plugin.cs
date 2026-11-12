@@ -23,6 +23,7 @@ public sealed partial class Plugin : IStellarPlugin
     private TargetInfoTracker _targetInfo = null!;   // constructed in the ctor, before the HUD is registered
     private TargetBuffTracker _targetBuff = null!;   // constructed in the ctor, right after _targetInfo
     private BossDbmTracker    _bossDbm    = null!;   // reads the game's DBM boss-skill countdown list (target-independent)
+    private NearbyMonsterTracker _nearby  = null!;   // enumerates nearby alive monsters for the Nearby Monsters overlay
     private IHotkeyAction     _lockAction = null!;   // rebindable hotkey: lock/unlock every overlay onto the current target
 
     // Theme muted-text colour helper (used by the moved Target HUD partials; copied from the old Plugin.FightRes.cs).
@@ -45,6 +46,7 @@ public sealed partial class Plugin : IStellarPlugin
         _targetInfo = new TargetInfoTracker(_services);
         _targetBuff = new TargetBuffTracker(_services, _targetInfo);
         _bossDbm    = new BossDbmTracker(_services);   // global DBM boss-skill list (not tied to the current target)
+        _nearby     = new NearbyMonsterTracker(_services);   // nearby-monster enumeration for the Nearby Monsters overlay
 
         // User effect-selection (which buffs/debuffs appear on the HUD), persisted in its own config section and
         // pushed into the tracker so RebuildLists honours it. Registered as a picker window below.
@@ -58,6 +60,7 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterBuffListWindow();     // standalone "List" buff/debuff style window (alternative to the classic tiles)
         RegisterBossTimerWindow();    // standalone boss skill-timer list (our replica of the game's native DBM list)
         RegisterCastBarWindow();      // standalone boss cast/chanting bar overlay (auto-shows only while a boss channels)
+        RegisterNearbyWindow();       // standalone nearby-monster list (name + HP bar + distance, auto-shows near monsters)
         _services.Framework.Update += OnTargetHudUpdate;
 
         // Load the three per-source caster filters and push them into the tracker, then register the settings window
@@ -93,10 +96,12 @@ public sealed partial class Plugin : IStellarPlugin
     private void OnTargetHudUpdate(float dt)
     {
         TickTargetTipPlace();
+        TickSettingsUi();   // settings help-popover re-anchor + open-centring bursts (Plugin.Settings.Open.cs)
         TickListScaleRebuild();
         TickThreatScaleRebuild();
         TickCastScaleRebuild();
         TickBossTimerScaleRebuild();
+        TickNearbyScaleRebuild();
     }
 
     public void Dispose()

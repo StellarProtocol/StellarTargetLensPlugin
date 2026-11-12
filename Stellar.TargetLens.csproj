@@ -32,6 +32,12 @@
     <!-- English-translated buff name/description dump (game data is Chinese). Loaded by TranslatedBuffText.
          Kept inside the project's Resources/ (colocated with the icon) so it can't be lost as a loose Mod-root file. -->
     <EmbeddedResource Include="Resources\BuffTable.json" LogicalName="Stellar.TargetLens.BuffTable.json" />
+    <!-- Nearby Monsters hard-lock padlock: white glyphs pre-drawn per size (tools/gen_lock_icons.py), tinted gold at draw. -->
+    <EmbeddedResource Include="Resources/lock-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Settings header crosshair glyph: white, pre-drawn per size (tools/gen_header_icon.py), on the live accent tile. -->
+    <EmbeddedResource Include="Resources/header-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Target Effects (effect picker) header star glyph: white, pre-drawn per size (tools/gen_star_icon.py). -->
+    <EmbeddedResource Include="Resources/star-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

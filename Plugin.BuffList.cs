@@ -23,16 +23,6 @@ public sealed partial class Plugin
     // because the element sizes are baked at build time. Default 1.0 = unchanged.
     private float _listScale = 1f;
 
-    // Dropdown option order MUST match the style ints above (index 0 = Classic, 1 = List, 2 = Off).
-    // Built fresh from the loc catalog each call so the labels follow the active language (the dropdown's
-    // Options provider re-invokes it), not baked once at init.
-    private string[] BuffStyleOptions() => new[]
-    {
-        _loc.T("tl.style.classic"),
-        _loc.T("tl.style.list"),
-        _loc.T("tl.style.off"),
-    };
-
     private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)
     private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
     // bar (18) + column gap (3) at scale 1; one row's vertical footprint. Scaled by _listScale so the height-driven

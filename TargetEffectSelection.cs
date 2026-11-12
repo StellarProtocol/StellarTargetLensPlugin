@@ -49,6 +49,18 @@ internal sealed class TargetEffectSelection
         if (on) _debuffs.Add(baseId); else _debuffs.Remove(baseId);
     }
 
+    /// <summary>Number of tracked buff ids (per id, not per name group).</summary>
+    public int BuffCount => _buffs.Count;
+
+    /// <summary>Number of tracked debuff ids (per id, not per name group).</summary>
+    public int DebuffCount => _debuffs.Count;
+
+    /// <summary>Untracks every buff (the picker's "Untick all" on the Buffs tab).</summary>
+    public void ClearBuffs() => _buffs.Clear();
+
+    /// <summary>Untracks every debuff (the picker's "Untick all" on the Debuffs tab).</summary>
+    public void ClearDebuffs() => _debuffs.Clear();
+
     /// <summary>True when an effect should be shown given its tracked-state + the type's mode.</summary>
     public bool ShouldShow(int baseId, bool isDebuff)
     {

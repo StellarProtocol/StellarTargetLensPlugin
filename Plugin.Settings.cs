@@ -4,10 +4,17 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.TargetLens;
 
-// Settings window + desktop-launcher tile for Target Lens (mirrors StellarPositionPlugin's launcher pattern).
-// A GlassMenu Tools window opened from the launcher, holding the plugin's user-facing toggles: master HUD
-// enable and the three per-source (mine / others / monster) caster filters. Registered from the ctor after the trackers +
-// Target HUD exist (so _targetHudWindow / _targetBuff are live).
+/// <summary>
+/// Settings window + desktop-launcher tile for Target Lens, house style (Stellar Design Language; user-approved
+/// prototype <c>_scratch\prototypes\targetlens-settings.html</c>, 2026-11-12). A ≈700 px GlassMenu window:
+/// ToolHeader (accent crosshair tile + "N of 6 overlays on") → two balanced columns of section panels (left: TARGET
+/// HUD, BUFFS / DEBUFFS; right: THREAT / AGGRO, CAST BAR, BOSS SKILL TIMERS, NEARBY MONSTERS). Every setting row ends in
+/// a round "?" (help popover). Nothing is ever hidden: a row that doesn't apply right now (its section is off, or a
+/// List-only buff option in Classic/Off) is RECESSED (rule 22) and keeps its value, so the window height never changes.
+/// Layout: Plugin.Settings.Layout.cs; row builders + header status: Plugin.Settings.Rows.cs; help popover:
+/// Plugin.Settings.Help.cs; open + centring (this window and the effect picker): Plugin.Settings.Open.cs; colours /
+/// components: Plugin.Style*.cs. The setters below (and the per-window scale setters) are unchanged by the redesign.
+/// </summary>
 public sealed partial class Plugin
 {
     private IWindowControl _settingsWindow = null!;   // registered in RegisterSettings(); drained via _windows
@@ -29,234 +36,35 @@ public sealed partial class Plugin
 
     private void RegisterSettings()
     {
+        // The help popover first: the settings rows' "?" fills read _helpWindow.IsShown.
+        _helpWindow = RegisterHelpWindow();   // Plugin.Settings.Help.cs
+        _windows.Add(_helpWindow);
+
         _settingsWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "targetlens.settings",
                 Title:       _loc.T("tl.settings.title"),
-                // Fixed 1440p-calibrated pixel default (2560 − 460 = 2100). A literal, NOT ScreenWidth −
-                // 460: the framework's "reset all HUD" path reads ScreenWidth as 0, which would push X to
-                // −460 (off-screen left). A constant survives reset. Height 0f = auto-fit.
-                DefaultRect: new WindowRect(2100f, 20f, 440f, 0f),
+                // Fixed 1440p-calibrated pixel default. A literal, NOT derived from ScreenWidth: the framework's "reset
+                // all HUD" path reads ScreenWidth as 0, which would push X off-screen. A constant survives reset (and
+                // every open re-centres it anyway, Plugin.Settings.Open.cs). Height 0f = auto-fit: no row ever hides,
+                // so the fitted height is the same in every state.
+                DefaultRect: new WindowRect(930f, 200f, SettingsWindowWidth, 0f),
                 Category:    WindowCategory.Tools,
                 Style:       WindowPanelStyle.GlassMenu)
-            { Draggable = true, Closable = true, StartVisible = false,
-              // Settings only make sense in-world, never over a loading screen.
-              ShouldRender = () => _services.ClientState.Phase == GamePhase.World
-                                   && (_services.ClientState.UiState & GameUIState.Loading) == 0 },
-            Root: new ColumnElement(new HudElement[]
             {
-                // ── Target HUD ───────────────────────────────────────────────────
-                new TextElement(() => _loc.T("tl.section.targetHud"), Emphasis: true),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _targetHudOn, Set: v =>
-                    {
-                        _targetHudOn = v;
-                        _targetHudWindow.SetVisible(v);
-                        _cfg.Set<bool>("target_hud_on", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showTargetHud")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.buffDisplay")),
-                    new DropdownElement(
-                        Selected: () => _buffStyle,
-                        Options:  () => BuffStyleOptions(),
-                        OnSelect: SetBuffStyle,
-                        Width:    200f),
-                }, Gap: 6f),
-                // "Show effects title" — the List window's header row. Only meaningful in List mode (the title only
-                // exists there), so the row is gated the same as the effect-size slider above. Live via the title's
-                // ConditionalElement (no window rebuild).
-                new ConditionalElement(() => _buffStyle == 1, new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showEffectTitle, Set: v =>
-                    {
-                        _showEffectTitle = v;
-                        _cfg.Set<bool>("show_effect_title", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showEffectTitle")),
-                }, Gap: 6f)),
-                // List-mode row-size slider (1.0–2.5x). Affects the List style only, so the row is shown ONLY while
-                // the display mode is List (_buffStyle == 1) — hidden for Classic (0) and Off (2); the predicate is
-                // re-evaluated each frame so switching the dropdown shows/hides it live. The drag itself only stashes
-                // the value + a readout; the buff-list window is rebuilt ONCE after the slider settles (SetListScale →
-                // TickListScaleRebuild), so a live drag never tears the window down. Readout mirrors CooldownBar's slider.
-                new ConditionalElement(() => _buffStyle == 1, new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.effectSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_listScale:0.0}x"),
-                    new SliderElement(() => _listScale, SetListScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f)),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _hidePermanent, Set: v =>
-                    {
-                        _hidePermanent = v;
-                        _targetBuff.HidePermanent = v;
-                        _cfg.Set<bool>("hide_permanent", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.hidePermanent")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showHidden, Set: SetShowHidden),
-                    new TextElement(() => _loc.T("tl.toggle.showHidden")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showMine, Set: v =>
-                    {
-                        _showMine = v;
-                        _targetBuff.ShowMine = v;
-                        _cfg.Set<bool>("show_mine", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showMine")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showOthers, Set: v =>
-                    {
-                        _showOthers = v;
-                        _targetBuff.ShowOthers = v;
-                        _cfg.Set<bool>("show_others", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showOthers")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showMonster, Set: v =>
-                    {
-                        _showMonster = v;
-                        _targetBuff.ShowMonster = v;
-                        _cfg.Set<bool>("show_monster", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showMonster")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new ButtonElement(() => _loc.T("tl.button.selectEffects"), OnClick: () => _selectWindow.SetVisible(true)),
-                    new TextElement(() => _loc.T("tl.desc.selectEffects")),
-                }, Gap: 6f),
-
-                // ── Threat / Aggro ───────────────────────────────────────────────
-                new SeparatorElement(),
-                new TextElement(() => _loc.T("tl.section.threat"), Emphasis: true),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showThreat, Set: v =>
-                    {
-                        // The threat/aggro list is its own window now, so the toggle takes full effect live: flip
-                        // the window's visibility straight away (no reserved-height reload caveat).
-                        _showThreat = v;
-                        _threatWindow.SetVisible(v);
-                        _cfg.Set<bool>("show_threat", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showThreat")),
-                }, Gap: 6f),
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.threatMode")),
-                    new DropdownElement(
-                        Selected: () => _threatMode,
-                        Options:  () => ThreatModeOptions(),
-                        OnSelect: SetThreatMode,
-                        Width:    200f),
-                }, Gap: 6f),
-                // "Show aggro title" — the threat window's header row. Live via the title's ConditionalElement (no rebuild).
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showThreatTitle, Set: v =>
-                    {
-                        _showThreatTitle = v;
-                        _cfg.Set<bool>("show_threat_title", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showThreatTitle")),
-                }, Gap: 6f),
-                // Threat row-size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
-                // readout; the threat window is rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.threatSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_threatScale:0.0}x"),
-                    new SliderElement(() => _threatScale, SetThreatScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
-
-                // ── Cast Bar ─────────────────────────────────────────────────────
-                new SeparatorElement(),
-                new TextElement(() => _loc.T("tl.section.castBar"), Emphasis: true),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _castBarOn, Set: v =>
-                    {
-                        // The boss cast bar is its own window, so the toggle takes full effect live: flip the
-                        // window's visibility straight away (no reserved-height reload caveat).
-                        _castBarOn = v;
-                        _castBarWindow.SetVisible(v);
-                        _cfg.Set<bool>("cast_bar_on", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showCastBar")),
-                }, Gap: 6f),
-                // Cast-bar size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
-                // readout; the cast-bar window is rebuilt ONCE after the slider settles (SetCastScale → TickCastScaleRebuild).
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.castSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_castScale:0.0}x"),
-                    new SliderElement(() => _castScale, SetCastScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
-
-                // ── Boss Skill Timers ────────────────────────────────────────────
-                new SeparatorElement(),
-                new TextElement(() => _loc.T("tl.section.bossTimers"), Emphasis: true),
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _bossTimerOn, Set: v =>
-                    {
-                        // The boss skill-timer list is its own window, so the toggle takes full effect live: flip the
-                        // window's visibility straight away (no reserved-height reload caveat).
-                        _bossTimerOn = v;
-                        _bossTimerWindow.SetVisible(v);
-                        _cfg.Set<bool>("boss_timer_on", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showBossTimers")),
-                }, Gap: 6f),
-                // "Show boss timers title" — the boss-timer window's header row. Live via the title's ConditionalElement (no rebuild).
-                new RowElement(new HudElement[]
-                {
-                    new ToggleElement(Label: () => "", Get: () => _showBossTimerTitle, Set: v =>
-                    {
-                        _showBossTimerTitle = v;
-                        _cfg.Set<bool>("show_bosstimer_title", v);
-                        _cfg.Save();
-                    }),
-                    new TextElement(() => _loc.T("tl.toggle.showBossTimerTitle")),
-                }, Gap: 6f),
-                // Boss-timer size slider (1.0–2.5x). Always visible in this section. The drag stashes the value +
-                // readout; the boss-timer window is rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
-                new RowElement(new HudElement[]
-                {
-                    new TextElement(() => _loc.T("tl.label.bossTimerSize")),
-                    new SpacerElement(Width: 0f),
-                    new TextElement(() => $"{_bossTimerScale:0.0}x"),
-                    new SliderElement(() => _bossTimerScale, SetBossTimerScale, Min: 1.0f, Max: 2.5f) { Width = 120f },
-                }, Gap: 6f),
-            }, Gap: 8f),
-            OnClose: () => _settingsWindow.SetVisible(false)));
+                TitleProvider = () => _loc.T("tl.settings.title"),   // live-localized; Title stays the fallback
+                Draggable = true, Closable = true, StartVisible = false,
+                // Settings only make sense in-world, never over a loading screen.
+                ShouldRender = () => _services.ClientState.Phase == GamePhase.World
+                                     && (_services.ClientState.UiState & GameUIState.Loading) == 0,
+                // Framework pre-build (fw 2.30.0): ~20 rows of chips / sliders / "?"s are built at the title screen and
+                // filled off-screen once in the world, so the first open is a re-show instead of a build hitch. The
+                // value lambdas only read plugin fields (+ _loc), safe whenever the world is up. Content never changes
+                // shape, so no PrebuildSignature (= filled once per world entry).
+                Prebuild = true,
+            },
+            Root: BuildSettingsRoot(),   // Plugin.Settings.Layout.cs
+            OnClose: CloseSettings));    // Plugin.Settings.Open.cs
         _windows.Add(_settingsWindow);   // Dispose already loops _windows and Remove()s each
 
         // Title stays the fixed literal "Target Lens" — the stable pin-identity key (ILauncher.cs:49-50) —
@@ -265,7 +73,7 @@ public sealed partial class Plugin
             Title:   "Target Lens",
             IconPng: LoadIconPng(),
             IconKey: null,
-            OnOpen:  () => _settingsWindow.SetVisible(true))
+            OnOpen:  OpenSettings)
         { Group = LauncherGroup.Plugin,
           // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
           TitleProvider = () => _loc.T("tl.settings.title"),
