@@ -59,6 +59,9 @@ public sealed partial class Plugin
                 ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
                 ChoiceChip("tl.choice.large",  () => _hudSize == 2, () => SetHudBarSize(2), BarSizeChipW),
             }),
+            // One background for all five overlays (threat, cast bar, boss skills, effects list, nearby): the navy plate +
+            // gold ring opacity; 0 % = floating. Live while dragging, saved once the drag settles (TickOverlayBgSave).
+            PercentSliderRow("tl.row.overlayBg", "tl.help.overlayBg", "tl.section.targetHud", () => _overlayBg, SetOverlayBg),
         });
 
     // BUFFS / DEBUFFS. No header chip: the Display choice (Classic / List / Off) is the on/off. "Show title" and "Size"

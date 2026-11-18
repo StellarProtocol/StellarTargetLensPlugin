@@ -84,6 +84,25 @@ public sealed partial class Plugin
             HelpDot(labelKey, helpKey, sectionKey));
     }
 
+    // label … [round-knob slider 0–100 %] [muted "80%"] [?] (the overlay background opacity). Readout rebuilt only when
+    // the shown whole percent changes.
+    private HudElement PercentSliderRow(string labelKey, string helpKey, string sectionKey, Func<float> get, Action<float> set)
+    {
+        int shown = -1;
+        string text = string.Empty;
+        string Value()
+        {
+            int v = (int)MathF.Round(get() * 100f);
+            if (v != shown) { shown = v; text = v.ToString(CultureInfo.InvariantCulture) + "%"; }
+            return text;
+        }
+        return SettingRow(
+            RowLabel(() => _loc.T(labelKey), null),
+            new CellElement(RoundSlider(get, set, 0f, 1f, null), Width: SliderTrackW),
+            new CellElement(new TextElement(Value, Color: () => MutedText(), Align: TextAlign.Right, NoWrap: true), Width: SliderValueW),
+            HelpDot(labelKey, helpKey, sectionKey));
+    }
+
     // Small muted UPPERCASE sub-caption inside a panel ("SHOW"); re-uppercased only on a language change.
     private HudElement SubCaption(string key)
     {
