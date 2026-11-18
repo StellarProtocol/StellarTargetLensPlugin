@@ -40,7 +40,7 @@ public sealed partial class Plugin
     }, Gap: SettingsGap);
 
     // ── left column ───────────────────────────────────────────────────────────────────────────────────────────────
-    // TARGET HUD: caption + hint + the On/Off chip, and the boss-bar size (Slim = 1× art, the default; Large = 2×).
+    // TARGET HUD: caption + hint + the On/Off chip, and the boss-bar size (Slim 1× / Medium 1.5×, the default / Large 2×).
     // A size change re-registers the HUD window (SetHudBarSize), keeping its position and width.
     private HudElement BuildTargetHudSection() => SectionPanel(() => _loc.T("tl.section.targetHud"),
         () => _loc.T("tl.hint.targetHud"),
@@ -55,8 +55,9 @@ public sealed partial class Plugin
         {
             ChoiceRow("tl.row.barSize", "tl.help.barSize", "tl.section.targetHud", new HudElement[]
             {
-                ChoiceChip("tl.choice.slim",  () => !_hudLarge, () => SetHudBarSize(false), BarSizeChipW),
-                ChoiceChip("tl.choice.large", () => _hudLarge,  () => SetHudBarSize(true),  BarSizeChipW),
+                ChoiceChip("tl.choice.slim",   () => _hudSize == 0, () => SetHudBarSize(0), BarSizeChipW),
+                ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
+                ChoiceChip("tl.choice.large",  () => _hudSize == 2, () => SetHudBarSize(2), BarSizeChipW),
             }),
         });
 

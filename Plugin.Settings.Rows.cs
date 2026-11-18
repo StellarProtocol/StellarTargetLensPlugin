@@ -18,7 +18,8 @@ public sealed partial class Plugin
     private const float BuffClassicChipW = 72f;
     private const float ListChipW        = 64f;
     private const float OffChoiceChipW   = 48f;
-    private const float BarSizeChipW     = 72f;   // Slim / Large (longest locale label fits 72)
+    private const float BarSizeChipW     = 60f;   // Slim / Large (longest: id "Ramping" ≈ 52 at bold 13)
+    private const float BarSizeMidChipW  = 84f;   // Medium (longest: fil "Katamtaman" ≈ 76 at bold 13)
     private const float TopAggroChipW    = 92f;
     private const float ChoiceChipGap    = 4f;
     private const float SliderValueW     = 36f;   // "2.5x"

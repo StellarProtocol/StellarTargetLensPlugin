@@ -40,8 +40,10 @@
     <EmbeddedResource Include="Resources/header-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <!-- Target Effects (effect picker) header star glyph: white, pre-drawn per size (tools/gen_star_icon.py). -->
     <EmbeddedResource Include="Resources/star-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
-    <!-- Target HUD "Celestial Crest" boss-bar art (user-chosen 2026-11-18): 3-slice frame + rank badges, 2× (Large) and @1x (Slim). -->
+    <!-- Target HUD "Celestial Crest" v3 boss-bar art (user-approved 2026-11-18): 3-slice frame + rank badges at 2× (Large),
+         @1.5x (Medium) and @1x (Slim); portrait-disc-<px>: the blue backing disc under the portrait (tools/gen_portrait_disc.py, Pillow, 8x supersampled). -->
     <EmbeddedResource Include="Resources/celestial_crest_*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Resources/portrait-disc-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
