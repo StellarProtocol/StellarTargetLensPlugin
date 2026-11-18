@@ -34,8 +34,8 @@ public sealed partial class Plugin
 
     private const int BossTimerSlots = 8;              // fixed row pool (the game rarely lists more than a handful)
 
-    // Warm amber like an incoming-danger schedule; a single colour (no debuff/buff split needed here).
-    private static readonly ColorRgba BossTimerFill = new(0.95f, 0.62f, 0.22f, 1f);
+    // Under this many seconds a row's bar turns HP red (Crest D3 A; a fixed threshold, not a setting).
+    private const float BossTimerUrgentSec = 3f;
 
     private void RegisterBossTimerWindow()
     {
@@ -49,12 +49,10 @@ public sealed partial class Plugin
 
         float sc = _bossTimerScale;
         float TimerW = 300f * sc;   // default width tuned in-game (240–700 band at 1×): icon + name + MM:SS
-        // Title + BossTimerSlots rows + gaps + padding, the WHOLE thing scaled by sc so the locked height grows with
-        // the rows. The window is WIDTH-resizable (drag wider to fit longer skill names); Resizable disables content-
-        // auto-fit and FIXES the height, so we compute an explicit height here and LOCK it below (MinHeight==MaxHeight).
-        // Stride is 21f * sc (NOT BuffRowStride, which rides the buff-list's _listScale) so this window is independent.
-        const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
-        float timerH  = (TitleReserve + Pad + BossTimerSlots * BaseStride) * sc;   // ≈ 208 at 1× (fixed, locked height)
+        // Chrome padding + the (unscaled) Crest caption block + BossTimerSlots rows (20 px bar + 3 px gap, scaled). The
+        // window is WIDTH-resizable (drag wider to fit longer skill names); Resizable disables content-auto-fit and
+        // FIXES the height, so it is computed here and LOCKED below (MinHeight==MaxHeight). Independent of _listScale.
+        float timerH  = 2f * ChromePad + CaptionReserve + (BossTimerSlots * 23f - 3f) * sc;   // ≈ 235 at 1× (locked)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
 
@@ -73,6 +71,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Width-resizable so longer skill names fit; height LOCKED via MinHeight==MaxHeight so only the
                 // width drags. MinWidth ≈ the default width (real drag floor); MaxWidth a generous ceiling.
                 Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = timerH, MaxHeight = timerH,
@@ -126,43 +125,32 @@ public sealed partial class Plugin
         RebuildBossTimerWindow();
     }
 
-    // Title + a fixed pool of BossTimerSlots rows. Each row = [optional skill icon] [countdown bar]. Rows collapse
-    // to zero height when they have no live entry (ConditionalElement on BossTimerRowVisible). Row dimensions (icon,
-    // icon cell width, bar height, font, gaps) scale together by _bossTimerScale so the list grows coherently; baked
-    // here at build time (SetBossTimerScale rebuilds the window to re-apply a change).
-    // The TITLE is intentionally kept at a fixed size (excluded from scaling) so only the rows grow.
+    // Crest look (Plugin.Crest.cs): caption "BOSS SKILLS" + "next in 2.1s" + hairline, then the soonest-first rows of
+    // [20 px skill icon] [amber bar filling as the skill approaches: name left, MM:SS right]; under 3 s the bar turns HP
+    // red (two bar variants — a gradient is fixed at build). Rows collapse when empty; the window keeps its locked
+    // height. Row sizes scale with _bossTimerScale (baked; SetBossTimerScale rebuilds); the caption stays fixed.
     private HudElement BuildBossTimerWindowRoot()
     {
         float sc     = _bossTimerScale;
-        int   titlePx = 14;   // fixed — title glyph does NOT scale with _bossTimerScale (only the rows do)
-        int   iconPx  = (int)System.Math.Round(18 * sc);
-        float cellW   = 22f * sc;
-        float barH    = 18f * sc;
-        int   fontPx  = (int)System.Math.Round(13 * sc);
-        float rowGap  = 6f * sc;
-        float colGap  = 3f * sc;
+        int   iconPx = (int)System.Math.Round(20 * sc);
+        float barH   = 20f * sc;
+        int   fontPx = (int)System.Math.Round(12 * sc);
 
         var rows = new HudElement[BossTimerSlots + 1];
-        // Wrapped so the "Show boss timers title" toggle collapses the header live (rows shift up; window keeps its size).
-        rows[0] = new ConditionalElement(() => _showBossTimerTitle,
-            new TextElement(() => _loc.T("tl.window.bosstimer"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
+        rows[0] = CrestCaption("tl.cap.bossSkills", () => BossTimerHint(), () => _showBossTimerTitle);
         for (int s = 0; s < BossTimerSlots; s++)
         {
             int idx = s;
-            var bar = new BarElement(() => BossTimerFraction(idx), BossTimerFill, () => BossTimerName(idx))
-            {
-                Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-                LabelInside = true, SecondaryLabel = () => BossTimerTime(idx),
-            };
+            var amber = CrestBar(() => BossTimerFraction(idx), GradAmber, () => BossTimerName(idx), () => BossTimerTime(idx), barH, fontPx, sc);
+            var red   = CrestBar(() => BossTimerFraction(idx), GradHp,    () => BossTimerName(idx), () => BossTimerTime(idx), barH, fontPx, sc);
+            var bars  = CrestBarRings(BarVariants(barH, (amber, () => !BossTimerUrgent(idx)), (red, () => BossTimerUrgent(idx))), sc);
             var row = new RowElement(new HudElement[]
             {
-                new CellElement(
-                    new GameTextureElement(() => GetBossTimerIcon(idx), iconPx, iconPx, () => _bossTimerUv[idx]),
-                    Width: cellW),
-                new CellElement(bar, Weight: 1f),
-            }, Gap: rowGap);
+                new CellElement(CrestIcon(() => GetBossTimerIcon(idx), () => _bossTimerUv[idx], iconPx, () => CrestRingNeutral), Width: iconPx),
+                new CellElement(bars, Weight: 1f),
+            }, Gap: 6f * sc);
             rows[s + 1] = new ConditionalElement(() => BossTimerRowVisible(idx), row);
         }
-        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
+        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
     }
 }

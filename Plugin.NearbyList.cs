@@ -121,26 +121,20 @@ public sealed partial class Plugin
     // Modern-bar overlay label uses HorizontalWrapMode.Overflow and is NOT masked to the track (only the fill clip
     // is), so a long name would SPILL past the bar, over the HP% and off the edge. We therefore pre-truncate here to
     // a width-aware budget and append an ellipsis — the only overflow-proof option for this label path.
+    // Cached per slot: re-truncated only when the slot's name or the window width changes (no per-poll strings).
+    private readonly string?[] _nbNameSrc = new string?[NearbySlots];
+    private readonly float[] _nbNameW = new float[NearbySlots];
+    private readonly string[] _nbName = NewStrArray(NearbySlots);
     private string NearbyName(int idx)
     {
         var l = NearbyDisplay();
         if (idx >= l.Count) return "";
-        return TruncateNameToBar(StripTags(l[idx].Name));
-    }
-
-    // Name colour by rank: boss = red/orange accent, elite = yellow accent, normal = default (null → theme default).
-    // Read off the same frame-gated display list as the other getters, so a recycled row re-tints when its live
-    // occupant changes rank (boss→elite→normal). Wired to the HP bar's primary inside label via LabelColorFn.
-    private ColorRgba? NearbyRowColor(int idx)
-    {
-        var l = NearbyDisplay();
-        if (idx >= l.Count) return null;
-        return l[idx].Rank switch
-        {
-            "Boss"  => NearbyBossColor,
-            "Elite" => NearbyEliteColor,
-            _        => (ColorRgba?)null,
-        };
+        var n = l[idx].Name;
+        float w = _nearbyWindow is { } win ? win.Rect.Width : 0f;
+        if (ReferenceEquals(n, _nbNameSrc[idx]) && w == _nbNameW[idx]) return _nbName[idx];
+        _nbNameSrc[idx] = n; _nbNameW[idx] = w;
+        _nbName[idx] = TruncateNameToBar(StripTags(n));
+        return _nbName[idx];
     }
 
     // Width-aware ellipsis clip for the in-bar name. Geometry mirrors BuildNearbyWindowRoot's row at the live
@@ -157,12 +151,13 @@ public sealed partial class Plugin
         float w = _nearbyWindow is { } win ? win.Rect.Width : 0f;
         if (w <= 0f) w = 320f * sc;
         float fontPx    = (int)Math.Round(12 * sc);         // the bar's LabelFontSize (barFont)
-        float distCellW = 44f * sc;
+        float distCellW = NearbyDistW * sc;
         float rowGap    = 6f * sc;
-        const float colPad = 16f;                            // ColumnElement Padding (8 each side, unscaled at build)
-        const float insets = 10f;                            // AddOverlayText's 5px left+right inset inside the track
+        float colPad    = 2f * ChromePad;                    // Borderless chrome padding (Crest: no extra column padding)
+        float insets    = 16f * sc;                          // the Crest bar's LabelInset (8·sc each side)
         float lockSlotW = NearbyLockPx(sc);                  // fixed padlock slot (always present, even when empty)
-        float barTrack  = w - colPad - lockSlotW - distCellW - 2f * rowGap;   // the bar cell's width (Weight:1 fills the rest of the row)
+        float pillSlotW = NearbyPillW(sc);                   // fixed BOSS/ELITE pill slot (empty for normal monsters)
+        float barTrack  = w - colPad - pillSlotW - lockSlotW - distCellW - 3f * rowGap;   // the bar cell's width (Weight:1)
         float pctReserve = 4f * fontPx * 0.65f + 8f;         // keep clear of the right-side HP% ("100%" worst case) + a gap
         float avail = barTrack - insets - pctReserve - fontPx /*ellipsis*/ - 6f /*slack*/;
         if (avail <= 0f) return "…";
@@ -199,21 +194,42 @@ public sealed partial class Plugin
         return e.MaxHp > 0 ? Clamp01((float)e.Hp / e.MaxHp) : 0f;
     }
 
-    // HP percent shown inside the bar.
+    // HP percent shown inside the bar; cached per slot by the shown integer.
+    private readonly int[] _nbPctVal = NewIntArray(NearbySlots, -1);
+    private readonly string[] _nbPct = NewStrArray(NearbySlots);
     private string NearbyHpPct(int idx)
     {
         var l = NearbyDisplay();
         if (idx >= l.Count) return "";
         var e = l[idx];
         if (e.MaxHp <= 0) return "";
-        return $"{(int)Math.Round(Clamp01((float)e.Hp / e.MaxHp) * 100f)}%";
+        int p = (int)Math.Round(Clamp01((float)e.Hp / e.MaxHp) * 100f);
+        if (p != _nbPctVal[idx]) { _nbPctVal[idx] = p; _nbPct[idx] = p + "%"; }
+        return _nbPct[idx];
     }
 
-    // Distance readout (right cell), whole metres, e.g. "42m".
+    // Distance readout (right cell), whole metres, e.g. "16 m"; cached per slot by the shown integer.
+    private readonly int[] _nbDistVal = NewIntArray(NearbySlots, -1);
+    private readonly string[] _nbDist = NewStrArray(NearbySlots);
     private string NearbyDist(int idx)
     {
         var l = NearbyDisplay();
         if (idx >= l.Count) return "";
-        return $"{(int)Math.Round(l[idx].Distance)}m";
+        int d = (int)Math.Round(l[idx].Distance);
+        if (d != _nbDistVal[idx]) { _nbDistVal[idx] = d; _nbDist[idx] = d + " m"; }
+        return _nbDist[idx];
     }
+
+    // Rank of the row ("Boss" / "Elite" / anything else = normal) for the bar variant + the pill.
+    private string NearbyRank(int idx)
+    {
+        var l = NearbyDisplay();
+        return idx < l.Count ? l[idx].Rank ?? "" : "";
+    }
+    private bool NearbyIsBoss(int idx)  => NearbyRank(idx) == "Boss";
+    private bool NearbyIsElite(int idx) => NearbyRank(idx) == "Elite";
+
+    // Caption hint "N monsters".
+    private readonly CountHint _nearbyHint = new();
+    private string NearbyHint() => _nearbyHint.Get(_loc.T("tl.hint.monsters"), NearbyDisplay().Count);
 }

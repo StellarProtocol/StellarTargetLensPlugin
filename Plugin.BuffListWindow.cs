@@ -31,23 +31,17 @@ public sealed partial class Plugin
         // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
         _showEffectTitle = _cfg.Get<bool>("show_effect_title", true);
 
-        const float ListW = 300f;                 // 1× min width — enough for a mini icon + a name + a compact time
-        const float TitleReserve = 24f;           // title line + gap (matches BuffList.cs)
-        const float Pad          = 16f;           // ColumnElement padding (8*2)
-        const float BaseStride   = 21f;           // one row's footprint at 1× (BuffRowStride without the scale)
-        const int   MinRows      = 3;             // shortest useful list
-        const int   MaxRows      = BuffListSlots; // 16 — the pool ceiling
+        const float ListW   = 300f;           // 1× min width — enough for a mini icon + a name + a compact time
+        const int   MinRows = 3;              // shortest useful list
+        const int   MaxRows = BuffListSlots;  // 16 — the pool ceiling
 
-        // The WHOLE height band scales by _listScale so the resize cap grows WITH the rows — otherwise the 1× max
-        // would stop the user dragging tall enough to see many big rows. At 1× ≈ 103..376 (default 376); at 2× ≈
-        // 206..752 (default 752). The window stays user-resizable within this band (we never force the dragged size);
-        // BuffListVisibleRows floors the (fixed-overhead-subtracted) height by the SCALED stride, so the max still
-        // fits the full 16-row pool at any scale. Width scales too (below) so the fixed 22-char name budget still
-        // fits the larger font — a bigger row gets a proportionally wider window rather than clipping names.
-        float minH = (TitleReserve + Pad + MinRows * BaseStride) * _listScale;
-        float maxH = (TitleReserve + Pad + MaxRows * BaseStride) * _listScale;
+        // Height band = chrome padding + the (unscaled) Crest caption block + 3..16 rows at the SCALED stride, so the
+        // resize cap grows WITH the rows. The window stays user-resizable within this band (never forced);
+        // BuffListVisibleRows floors the dragged height by the same stride. Width scales so the name budget fits.
+        float minH = 2f * ChromePad + CaptionReserve + MinRows * BuffRowStride - 3f * _listScale;
+        float maxH = 2f * ChromePad + CaptionReserve + MaxRows * BuffRowStride - 3f * _listScale;
         float defH = maxH;   // out-of-box height = the full row pool at the current scale (top of the resize band)
-        float winW = ListW * _listScale;   // default + min width grow with scale so names keep their room at big fonts
+        float winW = ListW * _listScale;
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). Fixed 1440p-calibrated
         // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
@@ -64,18 +58,18 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Height-resizable (row count follows height); width-resizable for name room. Height clamped to the
                 // 3..16-row band so it can neither hide the title nor exceed the fixed slot pool.
                 Resizable = true, MinWidth = winW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: mirrors the Target HUD gate (in-world, no menu/loading/blocking overlay, live target),
-                // plus the List style selected AND a non-empty effect list so it never shows an empty box. Layout-edit
-                // mode overrides so the window can be positioned against its example rows without a live target.
+                // plus the List style selected. With no effects it shows the Crest empty state ("No effects on this
+                // target") at the same size. Layout-edit mode overrides so it can be placed against its example rows.
                 ShouldRender = () => _services.Windows.IsLayoutEditing
                                   || (_services.ClientState.Phase == GamePhase.World
                                       && (_services.ClientState.UiState & (GameUIState.Loading | GameUIState.Blocking | GameUIState.AnyMenu)) == 0
                                       && _buffStyle == 1
-                                      && _targetInfo.Current.HasTarget
-                                      && CurEffects().Count > 0),
+                                      && _targetInfo.Current.HasTarget),
                 // Framework pre-build (fw 2.30.0): this window is Visible but held hidden by ShouldRender until a
                 // target with effects appears, and its first DRAWN apply built every row (~74 ms). The framework now
                 // fills it off-screen once in the world; with no target every row Conditional is false, so the rows
@@ -111,54 +105,41 @@ public sealed partial class Plugin
         if (rect.Width > 0f) _buffListWindow.SetRect(rect);
     }
 
-    // Title + a fixed pool of BuffListSlots rows. Each row = [mini icon] [ time-bar ]. The bar is split into two
-    // mutually-exclusive BarElements (debuff red/orange vs buff green) via a per-row ConditionalElement — BarElement's
-    // colour arg is a ColorRgba VALUE, not a Func, so the colour can't vary within one bar. Each row collapses to zero
-    // height when it has no live effect OR doesn't fit at the current height (ConditionalElement on BuffListRowVisible).
+    // Crest look (Plugin.Crest.cs): caption "TARGET EFFECTS" + "2 debuffs · 2 buffs" + hairline, then the empty-state
+    // line OR a fixed pool of BuffListSlots rows: [20 px icon, orange (debuff) / green (buff) ring] [bar: debuff /
+    // buff gradient — two variants, a gradient is fixed at build — name left ("★ " = yours), time right; a permanent
+    // effect = full bar at ~55 % alpha + "—"]. Debuffs first, then buffs (ListEffects). Rows collapse when empty or
+    // beyond the dragged height. Row sizes scale with _listScale (baked; SetListScale rebuilds); the caption is fixed.
     private HudElement BuildBuffListWindowRoot()
     {
-        // Row dimensions scale together by _listScale (List style only) so the list grows coherently: icon px, icon
-        // cell width, bar height, label font, the horizontal icon↔bar gap, and the per-row vertical gap (which, with
-        // the scaled bar height, reproduces the scaled BuffRowStride the height-driven row count is floored by).
-        // Baked here at build time — SetListScale rebuilds the window (RebuildBuffListWindow) to re-apply a new scale.
-        float sc      = _listScale;
-        int   iconPx  = (int)System.Math.Round(18 * sc);
-        float cellW   = 22f * sc;
-        float barH    = 18f * sc;
-        int   fontPx  = (int)System.Math.Round(13 * sc);
-        float rowGap  = 6f * sc;
-        float colGap  = 3f * sc;
+        float sc     = _listScale;
+        int   iconPx = (int)System.Math.Round(20 * sc);
+        float barH   = 20f * sc;
+        int   fontPx = (int)System.Math.Round(12 * sc);
 
-        var rows = new HudElement[BuffListSlots + 1];
-        // Wrapped so the "Show effects title" toggle collapses the header live (rows shift up; window keeps its size).
-        rows[0] = new ConditionalElement(() => _showEffectTitle,
-            new TextElement(() => _loc.T("tl.window.bufflist"), Color: MutedColor, Emphasis: true, FontSize: 14));
+        var rows = new HudElement[BuffListSlots + 2];
+        rows[0] = CrestCaption("tl.cap.effects", () => BuffListHint(), () => _showEffectTitle);
+        // Empty state: a recessed line with soft italic text (the window keeps its size).
+        rows[1] = new ConditionalElement(() => BuffListEmpty(),
+            new BubbleElement(new TextElement(() => _loc.T("tl.effects.empty"), Color: () => CrestSoft, FontSize: 11, NoWrap: true) { Italic = true })
+            { FillColor = EmptyLineFill, CornerRadius = 3f, PaddingX = 8f, PaddingY = 2f });
         for (int s = 0; s < BuffListSlots; s++)
         {
             int idx = s;
-            var debuffBar = new BarElement(() => BuffListFraction(idx), DebuffAccent, () => BuffListName(idx))
-            {
-                Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-                LabelInside = true, SecondaryLabel = () => BuffListTime(idx),
-            };
-            var buffBar = new BarElement(() => BuffListFraction(idx), BuffAccent, () => BuffListName(idx))
-            {
-                Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-                LabelInside = true, SecondaryLabel = () => BuffListTime(idx),
-            };
+            var debuffBar = CrestBar(() => BuffListFraction(idx), GradDebuff, () => BuffListName(idx), () => BuffListTime(idx), barH, fontPx, sc, () => BuffListTint(idx));
+            var buffBar   = CrestBar(() => BuffListFraction(idx), GradBuff,   () => BuffListName(idx), () => BuffListTime(idx), barH, fontPx, sc, () => BuffListTint(idx));
             var row = new RowElement(new HudElement[]
             {
-                new CellElement(
-                    new GameTextureElement(() => GetBuffListIcon(idx), iconPx, iconPx, () => _buffListUv[idx]),
-                    Width: cellW),
-                new CellElement(
-                    // Prebuild: both bar colours built ahead (only the active one would be, lazily).
-                    new ConditionalElement(() => BuffListIsDebuff(idx), debuffBar, buffBar) { Prebuild = true, PrebuildName = "tl.bufflist.bar" },
+                new CellElement(CrestIcon(() => GetBuffListIcon(idx), () => _buffListUv[idx], iconPx,
+                    () => BuffListIsDebuff(idx) ? CrestDebuffRing : CrestBuffRing), Width: iconPx),
+                new CellElement(CrestBarRings(BarVariants(barH, (debuffBar, () => BuffListIsDebuff(idx)), (buffBar, () => !BuffListIsDebuff(idx))), sc),
                     Weight: 1f),
-            }, Gap: rowGap);
+            }, Gap: 6f * sc);
             // Prebuild: built in the background even while no row is live (the window pre-build's fill has no target).
-            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
+            rows[s + 2] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
         }
-        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
+        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
     }
+
+    private static readonly ColorRgba EmptyLineFill = new(6f / 255f, 9f / 255f, 20f / 255f, 0.7f);
 }
