@@ -59,6 +59,8 @@
   "tl.rank.boss": "보스",
   "tl.rank.elite": "정예",
   "tl.hud.break": "BREAK",
+  "tl.hud.break_pct": "브레이크 {0}%",
+  "tl.hud.broken": "브레이크 상태 {0}초",
   "tl.cast.casting": "시전 중…",
   "tl.threat.playerFallback": "플레이어 {0}",
   "tl.select.tab.debuffs": "디버프",

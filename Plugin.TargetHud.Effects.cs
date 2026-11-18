@@ -41,8 +41,8 @@ public sealed partial class Plugin
     private int EffTilesPerLine()
     {
         float w = _targetHudWindow != null ? _targetHudWindow.Rect.Width : 0f;
-        if (w < 1f) w = 420f;                                   // pre-mount fallback = default width
-        int fit = (int)((w - 16f - 34f) / TileStride);          // 16 = column padding (8*2), 34 = +N reserve
+        if (w < 1f) w = 1000f;                                  // pre-mount fallback = default width
+        int fit = (int)((w - 2f * HudPad - 34f) / TileStride);  // 2·HudPad = chrome padding, 34 = +N reserve
         return System.Math.Clamp(fit, 1, HudBuffSlots);
     }
 

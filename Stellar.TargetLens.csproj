@@ -18,13 +18,15 @@
   <!-- Framework 2.2.0 ships the BarElement overlay props (Overlay01 / OverlayColor / OverlayInFront) on the
        published NuGet, so the earlier local-source override is gone — compile straight against the packages.
        Stellar.Plugin.InteropRefs has no 2.2.0 (build-assets package, versions independently; unchanged since 2.0.0). -->
+  <!-- 2.34.0: SlicedImageElement, StackLayer.Rect, ImageElement.Crisp and the Modern-bar gradient/trail/stripes/ticks
+       opt-ins used by the boss-bar Target HUD. -->
   <!-- Bumped to 2.3.0 for the i18n-ko launcher-tile review fix: LauncherEntry.TitleProvider (live-localized
        tile title, needed so Title can stay the fixed pin-identity literal) was added in Abstractions 2.3.0 —
        additive/binary-compatible per framework/CHANGELOG.md [2.3.0]. -->
   <ItemGroup>
-    <PackageReference Include="Stellar.Abstractions"       Version="2.30.0" />
-    <PackageReference Include="Stellar.PluginContracts"    Version="2.30.0" />
-    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.30.0" />
+    <PackageReference Include="Stellar.Abstractions"       Version="2.34.0" />
+    <PackageReference Include="Stellar.PluginContracts"    Version="2.34.0" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.34.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,6 +40,8 @@
     <EmbeddedResource Include="Resources/header-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <!-- Target Effects (effect picker) header star glyph: white, pre-drawn per size (tools/gen_star_icon.py). -->
     <EmbeddedResource Include="Resources/star-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Target HUD "Resonance Glass" boss-bar art at 2× (user-approved 2026-11-18): 3-slice frame + rank badges. -->
+    <EmbeddedResource Include="Resources/resonance_glass_*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

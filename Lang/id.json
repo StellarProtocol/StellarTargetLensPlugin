@@ -59,6 +59,8 @@
   "tl.rank.boss": "BOS",
   "tl.rank.elite": "ELIT",
   "tl.hud.break": "BREAK",
+  "tl.hud.break_pct": "BREAK {0}%",
+  "tl.hud.broken": "HANCUR {0} dtk",
   "tl.cast.casting": "Merapal…",
   "tl.threat.playerFallback": "Pemain {0}",
   "tl.select.tab.debuffs": "Debuff",

@@ -59,6 +59,8 @@
   "tl.rank.boss": "ボス",
   "tl.rank.elite": "エリート",
   "tl.hud.break": "ブレイク",
+  "tl.hud.break_pct": "ブレイク {0}%",
+  "tl.hud.broken": "ブレイク中 {0}秒",
   "tl.cast.casting": "詠唱中…",
   "tl.threat.playerFallback": "プレイヤー {0}",
   "tl.select.tab.debuffs": "デバフ",

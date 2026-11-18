@@ -6,13 +6,13 @@ namespace Stellar.TargetLens;
 
 // Top-right combat-target HUD overlay. Auto-shows in-world whenever the game has a locked target,
 // mirroring the draggable "Target / Monster Info" menu window's data (portrait / name / HP / distance /
-// effects) in a compact panel. Reuses _targetInfo + _targetBuff — no new data layer. Registered from the
-// ctor right after the trackers are built; toggled on/off from BuildTargetRoot().
+// effects). Reuses _targetInfo + _targetBuff — no new data layer. Registered from the ctor right after the
+// trackers are built; toggled on/off from BuildTargetRoot().
 //
-// Redesign: a semi-transparent dark PanelElement background (readability over the world), a header row of
-// monster portrait + name + Lv/Rank + HP bar, a muted distance line, then ONE combined effects list (buffs
-// and debuffs merged) with bigger icons. Each effect shows its parent SKILL icon when it has one, else the
-// buff icon; a per-row cooldown bar plus a ▲/▼ label tag keeps buffs vs debuffs distinguishable.
+// 2026-11-18 redesign (user-approved "Resonance Glass", _scratch/prototypes/targetlens-bossbar-APPROVED.md): a
+// fixed-colour 3-slice frame art at 2× (150 px tall) with the portrait, rank badge, name, distance, HP bar and break
+// gauge placed into the art's slots — layout in Plugin.TargetHud.Frame.cs. Classic effects mode puts the effect tiles
+// in a row under the frame (Plugin.TargetHud.Effects.cs).
 //
 // v2.0.0 note: WindowSpec has NO HideUntilInWorld / AutoHideBehindGameMenus flags (they existed in v1.5.1).
 // Both are omitted; the ShouldRender predicate below already gates to Phase==World and not-Loading.
@@ -27,12 +27,7 @@ public sealed partial class Plugin
     private const int HudBuffSlots = 12;               // combined buff+debuff row pool
     private readonly UvRect[] _hudEffUv = new UvRect[HudBuffSlots];
 
-    // BarElement's colour arg is a ColorRgba VALUE (no Func overload in v2.0.0), so a single neutral bar colour
-    // is used for the merged list — buff/debuff is distinguished by the ▲/▼ label tag instead.
-    private static readonly ColorRgba EnemyHpColor   = new(0.85f, 0.25f, 0.25f, 1f);
     private static readonly ColorRgba EffectBarColor = new(0.45f, 0.55f, 0.70f, 1f); // neutral out-of-range tile accent
-    private static readonly ColorRgba BreakBarColor  = new(0.35f, 0.65f, 0.95f, 1f); // blue, distinct from the red HP bar
-    private static readonly ColorRgba BreakRecoverColor = new(0.95f, 0.65f, 0.20f, 1f); // amber while broken/refilling
 
     // Local break-gauge fill tween — the raw attr snaps back to full after the recovery window; this reproduces
     // the game HUD's smooth 0→full refill over the monster's BreakingContinueTime.
@@ -53,30 +48,30 @@ public sealed partial class Plugin
 
     private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
 
+    // Borderless chrome pads the content 12 px on every side (WindowBuilder.BuildBorderless) — the frame sits inside it.
+    private const float HudPad = 12f;
+
     private void RegisterTargetHud()
     {
         _monIcon = new MonsterIconLoader(_services);
 
-        const float HudW = 420f;         // MIN width (drag floor); the out-of-box default width is wider (below)
-        const float HudDefaultW = 732f;  // default width tuned in-game (user widened from 420) — still ≥ HudW min
+        // MIN width = the art's two caps (532) + a 120 px middle + padding, so the HP bar never gets shorter than
+        // ~476 px; the out-of-box default is wider (frame ≈ 976 px).
+        const float HudW = FrameCapsW + 120f + 2f * HudPad;
+        const float HudDefaultW = 1000f;
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
-        // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged. The threat/aggro list is
-        // its OWN window now (see Plugin.ThreatWindow.cs), so this HUD keeps its original fixed height.
+        // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged.
         //
         // The height is engine-locked for a Resizable window (MinHeight==MaxHeight can't change at runtime — see
         // WindowBuilder-Patterns.md), so it's chosen ONCE here from the PERSISTED buff style. Read straight from
         // _cfg (not _buffStyle) so it doesn't depend on which partial's ctor sets that field first.
-        //   Classic (0): full 240 — header + HP + break bars + the effect-tile grid.
-        //   List (1) / Off (2): compact — no tile grid in the HUD (List renders effects in the standalone Target
-        //                Effects window; Off shows nothing), so drop that band. Only Classic keeps the tall height.
-        //                The break/stagger gauge MUST still fit (bosses show it in List/Off mode too).
-        // Compact derivation from BuildTargetHudRoot (ColumnElement Gap 4, Padding 8): 8 pad-top + 52 header
-        // (52px portrait) + 4 + 28 HP bar + 4 + 18 break bar + 8 pad-bottom = 122 core; +18 margin to absorb
-        // any gaps the collapsed conditional slots still reserve and font metrics → 140.
+        //   List (1) / Off (2): 12 pad + 150 frame + 12 pad = 174 (the break gauge is inside the frame art).
+        //   Classic (0): + 8 column gap + the effect-tile row (44 icon + 2 + ~16 seconds caption ≈ 62) → 244, +4 slack
+        //                for font metrics → 248.
         // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
         int style = _cfg.Get<int>("buff_style", 1);
-        float HudH = style == 0 ? 240f : 140f;
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=984, y=0, width widened to 732).
+        float HudH = style == 0 ? 248f : FrameH + 2f * HudPad;
+        // Default position tuned in-game (user's saved 2560x1440 layout: x=984, y=0).
         // Fixed 1440p-calibrated pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path
         // where ScreenWidth is 0, so 0*frac collapsed every window to x=0 — an absolute px restores correctly.
         // y absolute. A user's own saved drag still overrides this.
@@ -92,7 +87,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                // Width-resizable (min = default width); height LOCKED via MinHeight==MaxHeight so it can't be dragged.
+                // Width-resizable; height LOCKED via MinHeight==MaxHeight so it can't be dragged.
                 Resizable = true, MinWidth = HudW, MinHeight = HudH, MaxHeight = HudH,
                 // Auto-show: only in-world, only when a target exists, and hidden while any menu/blocking
                 // overlay or loading screen is up (replaces the v1.5.1 AutoHideBehindGameMenus flag). Layout-edit
@@ -111,65 +106,14 @@ public sealed partial class Plugin
         _targetHudWindow.SetVisible(_targetHudOn);
     }
 
-    // The window paints a fixed 80%-black backdrop (WindowSpec.BackgroundOpacity); the column just pads content.
+    // The boss-bar frame (Plugin.TargetHud.Frame.cs), then — Classic style only (buff_style == 0) — one row of
+    // CooldownBar-style effect tiles under it. In List style the standalone Target Effects window renders them instead
+    // (Plugin.BuffListWindow.cs), so the row collapses away. Gap 8 (a 0 gap means "default section gap" here).
     private HudElement BuildTargetHudRoot() => new ColumnElement(new HudElement[]
         {
-            // Header: bigger portrait + large-font name on top, full-width HP bar below.
-            new RowElement(new HudElement[]
-            {
-                new CellElement(
-                    new GameTextureElement(() => GetMonsterPortrait(), 52, 52, () => _portraitUv) { CornerRadius = 26 },
-                    Width: 56f),
-                new CellElement(
-                    new RowElement(new HudElement[]
-                    {
-                        // Rank tag — bold + coloured (Boss = gold, Elite = orange), hidden for Normal.
-                        new ConditionalElement(() => TargetHudHasRank(),
-                            new TextElement(() => TargetHudRankText(), Color: () => TargetHudRankColor(), Emphasis: true, FontSize: 22)),
-                        new TextElement(() => TargetHudNameLine(), Emphasis: true, FontSize: 22),
-                        // Distance inline after the name (compact "35 m"); empty when unknown so nothing shows.
-                        new TextElement(() => TargetHudDistText(), Color: MutedColor),
-                    }, Gap: 6f),
-                    Weight: 1f),
-            }, Gap: 8f),
-            // CombatMeter-style HP bar: flat role-coloured fill + sweeping sheen, HP value on the left and
-            // percent on the right (meter style overlays both texts). Taller + row-filling.
-            new BarElement(() => TargetHudHpFraction(), EnemyHpColor, () => TargetHudHpLabel())
-            {
-                Style = BarStyle.Modern, Sheen = true,
-                Height = 28f, FillWidth = true, LabelFontSize = 16,
-                SecondaryLabel = () => TargetHudHpPct(),
-                // Monster/boss shield ("armor" / 护盾) drawn as a translucent cyan overlay ON the HP bar
-                // (shield current over HP max — the band shrinks as the shield drains; 0 ⇒ invisible).
-                Overlay01      = () => TargetHudShieldOverlayFraction(),
-                OverlayColor   = ShieldOverlayColor,
-                OverlayInFront = true,
-            },
-
-            // Boss/elite break (stagger) gauge — only shown when the target actually has one (MaxStunned > 0).
-            // Two mutually-exclusive bars so the fill colour can differ by state (BarElement's colour arg is a
-            // ColorRgba VALUE, no Func overload): blue live gauge while draining, amber refill tween while broken.
-            // Live bar (draining): blue, current/max values + percent.
-            new ConditionalElement(() => TargetHudHasBreak() && !TargetHudBroken(),
-                new BarElement(() => TargetHudBreakFraction(), BreakBarColor, () => TargetHudBreakLabel())
-                {
-                    Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 14,
-                    SecondaryLabel = () => TargetHudBreakPct(),
-                }),
-            // Break/recovery bar: amber, local fill tween + seconds-remaining countdown.
-            new ConditionalElement(() => TargetHudHasBreak() && TargetHudBroken(),
-                new BarElement(() => TargetHudBreakFraction(), BreakRecoverColor, () => _loc.T("tl.hud.break"))
-                {
-                    Style = BarStyle.Modern, Height = 18f, FillWidth = true, LabelFontSize = 14,
-                    SecondaryLabel = () => TargetHudBreakRemainLabel(),
-                }),
-
-            // One combined buff + debuff grid of CooldownBar-style tiles (skill icon when the effect has a
-            // parent skill, else the buff icon); debuff = red/orange accent, buff = green. Shown ONLY in
-            // Classic style (buff_style == 0); in List style the standalone Target Effects window renders
-            // these instead (see Plugin.BuffListWindow.cs), so the classic grid collapses away here.
+            BuildTargetHudFrame(),
             new ConditionalElement(() => _buffStyle == 0, BuildTargetHudEffectTiles()),
-        }, Gap: 4f) { Padding = 8 };
+        }, Gap: 8f);
 
     // ── Layout-edit example data ────────────────────────────────────────────────
     // While the layout editor (Shift+`) is active and no monster is locked, feed the getters representative
@@ -202,12 +146,11 @@ public sealed partial class Plugin
 
     // ── Header / portrait / HP / distance ──────────────────────────────────────
 
-    // Best-effort head portrait. Returns null → header still renders name + HP fine.
+    // Best-effort head portrait. Returns null → the frame's portrait ring stays empty, the rest renders fine.
     private object? GetMonsterPortrait()
         => _monIcon.GetIcon((int)Cur.ConfigId, out _portraitUv);
 
-    // Name only — the rank is shown separately as a coloured tag (below). Level is intentionally omitted
-    // (AttrLevel never populates for monsters).
+    // Name only — the rank is shown on the badge. Level is intentionally omitted (AttrLevel never populates for monsters).
     private string TargetHudNameLine()
     {
         var s = Cur;
@@ -215,31 +158,26 @@ public sealed partial class Plugin
         return string.IsNullOrEmpty(s.Name) ? _loc.T("tl.hud.unknown") : s.Name;
     }
 
-    // Rank tag: bold + coloured (Boss = gold, Elite = orange); shown only for Boss/Elite, never Normal.
-    private static readonly ColorRgba BossRankColor  = new(0.98f, 0.80f, 0.30f, 1f); // gold
-    private static readonly ColorRgba EliteRankColor = new(0.95f, 0.55f, 0.25f, 1f); // orange
-
     private bool TargetHudHasRank()
     {
         var s = Cur;
         return s.HasTarget && !string.IsNullOrEmpty(s.Rank) && s.Rank != "Normal";
     }
 
+    private bool TargetHudIsBoss()  { var s = Cur; return s.HasTarget && s.Rank == "Boss"; }
+    private bool TargetHudIsElite() { var s = Cur; return s.HasTarget && s.Rank == "Elite"; }
+
     // Rank is game data ("Boss"/"Elite"/"Normal") kept as-is for the logic compares above; only the DISPLAYED
-    // tag is localized. Any other rank value falls back to the uppercased raw string.
+    // badge text is localized. Any other rank value falls back to the uppercased raw string (cached — no per-poll alloc).
+    private string? _rankRaw, _rankUpper;
     private string TargetHudRankText()
     {
         if (!TargetHudHasRank()) return "";
         var rank = Cur.Rank;
         if (rank == "Boss")  return _loc.T("tl.rank.boss");
         if (rank == "Elite") return _loc.T("tl.rank.elite");
-        return rank.ToUpperInvariant();
-    }
-
-    private ColorRgba? TargetHudRankColor()
-    {
-        var s = Cur;
-        return s.Rank == "Boss" ? BossRankColor : s.Rank == "Elite" ? EliteRankColor : (ColorRgba?)null;
+        if (rank != _rankRaw) { _rankRaw = rank; _rankUpper = rank.ToUpperInvariant(); }
+        return _rankUpper!;
     }
 
     private float TargetHudHpFraction()
@@ -248,27 +186,12 @@ public sealed partial class Plugin
         return s.MaxHp > 0 ? Clamp01((float)s.Hp / s.MaxHp) : 0f;
     }
 
-    private string TargetHudHpLabel()   // left overlay: HP values (+ shield in parens when shielded)
-    {
-        var s = Cur;
-        _targetInfo.TryGetCurrentShield(out var shield, out _);
-        string sh = shield > 0 ? $" ({shield:N0})" : "";
-        if (s.MaxHp <= 0) return s.Hp > 0 ? $"{s.Hp:N0}{sh}" : "?";
-        return $"{s.Hp:N0} / {s.MaxHp:N0}{sh}";
-    }
-
-    private string TargetHudHpPct()     // right overlay: percent
-    {
-        var s = Cur;
-        return s.MaxHp > 0 ? $"{100f * s.Hp / s.MaxHp:F0}%" : "";
-    }
-
     // ── Break / stagger gauge (bosses + elites; MaxStunned > 0 is the presence signal) ──
-    // NOTE: fill-vs-deplete DIRECTION is unverified — rendered as current/max. Confirm in-game.
+    // Shown for bosses only in the redesign (elite/normal: the break row stays empty, frame keeps its size).
     private bool TargetHudHasBreak()
     {
         var s = Cur;
-        return s.HasTarget && s.MaxStunned > 0;
+        return s.HasTarget && s.MaxStunned > 0 && s.Rank == "Boss";
     }
 
     // Per-frame driver for the local break tween. Safe to call repeatedly — BreakGauge frame-gates internally.
@@ -285,33 +208,10 @@ public sealed partial class Plugin
         return _breakGauge.Fill;
     }
 
-    // True during the local recovery window (gauge broken → refilling); drives which of the two bars renders.
+    // True during the local recovery window (gauge broken → refilling); drives which gauge layer renders.
     private bool TargetHudBroken()
     {
         UpdateBreakGaugeState();
         return _breakGauge.Broken;
     }
-
-    // Countdown label shown on the amber recovery bar (seconds remaining until the gauge snaps back to full).
-    private string TargetHudBreakRemainLabel() => $"{_breakGauge.RemainingSec:F1}s";
-
-    private string TargetHudBreakLabel()   // left overlay: values only (no "BREAK" word)
-    {
-        var s = Cur;
-        return s.MaxStunned > 0 ? $"{s.Stunned:N0} / {s.MaxStunned:N0}" : "";
-    }
-
-    private string TargetHudBreakPct()     // right overlay: percent
-    {
-        var s = Cur;
-        return s.MaxStunned > 0 ? $"{100f * s.Stunned / s.MaxStunned:F0}%" : "";
-    }
-
-    // Compact distance shown inline after the name (e.g. "35 m"); empty when unknown so nothing renders.
-    private string TargetHudDistText()
-    {
-        var s = Cur;
-        return s.HasDistance ? $"{s.Distance:F0} m" : "";
-    }
-
 }

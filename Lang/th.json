@@ -59,6 +59,8 @@
   "tl.rank.boss": "บอส",
   "tl.rank.elite": "อีลิท",
   "tl.hud.break": "เบรก",
+  "tl.hud.break_pct": "เบรก {0}%",
+  "tl.hud.broken": "เบรกแล้ว {0} วิ",
   "tl.cast.casting": "กำลังร่าย…",
   "tl.threat.playerFallback": "ผู้เล่น {0}",
   "tl.select.tab.debuffs": "ดีบัฟ",

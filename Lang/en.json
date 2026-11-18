@@ -59,6 +59,8 @@
   "tl.rank.boss": "BOSS",
   "tl.rank.elite": "ELITE",
   "tl.hud.break": "BREAK",
+  "tl.hud.break_pct": "BREAK {0}%",
+  "tl.hud.broken": "BROKEN {0}s",
   "tl.cast.casting": "Casting…",
   "tl.threat.playerFallback": "Player {0}",
   "tl.select.tab.debuffs": "Debuffs",
