@@ -78,7 +78,7 @@ def medallion(kind, px):
 
 
 def pill(kind, step):
-    w, h = round(30 * step), round(14 * step)
+    w, h = round(40 * step), round(16 * step)   # 40x16 at 1.0 (30x14 + 8.5 px text was unreadable in game)
     top, bot, txt, label = ((hexc("#ffe6a0"), hexc("#d8a540"), hexc("#2a1a04"), "BOSS") if kind == "boss"
                             else (hexc("#ffc890"), hexc("#e0781e"), hexc("#2a1204"), "ELITE"))
     W, H = w * SS, h * SS
@@ -94,7 +94,7 @@ def pill(kind, step):
     im.paste(grad, (0, 0), mask)
     im = im.resize((w, h), Image.LANCZOS)
     # Text drawn at the final size (hinted by FreeType), not supersampled-then-shrunk.
-    font = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", max(7, round(8.5 * step)))   # 9.5 px of the mockup overflows the fixed 30 px slot for ELITE
+    font = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", max(8, round(10 * step)))   # bold 10 px at 1.0
     d = ImageDraw.Draw(im)
     bb = d.textbbox((0, 0), label, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]

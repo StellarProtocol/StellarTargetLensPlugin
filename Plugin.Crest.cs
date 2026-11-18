@@ -75,8 +75,14 @@ public sealed partial class Plugin
     private const float ChromePad = 12f;   // Borderless chrome content padding (WindowBuilder.BuildBorderless)
 
     // The window content wrapped with the plate ring (1 px gold), or — for the cast bar — gold / 2 px red by `danger`.
+    // The content sits in an always-true ConditionalElement with Fill, so in a resizable / height-locked window the
+    // stack's base grows to the WHOLE window height (leftover height goes to a base that asks for it) and the ring layer
+    // — sized to the base — lands on the true window edge. Rows stay top-aligned (the content column doesn't stretch
+    // its children). Content-fit windows have no leftover, so nothing changes there. (In game 2026-11-18: without it the
+    // ring wrapped only the rows of Nearby / Effects and left an un-ringed strip of plate below.)
     private HudElement CrestFrame(HudElement content, Func<bool>? danger = null)
     {
+        content = new ConditionalElement(() => true, content, Fill: true);
         var gold = PlateRing(() => CrestRingNeutral with { A = 0.62f * _overlayBg }, 1f, danger == null ? null : () => !danger());
         if (danger == null) return new LayerStackElement(content, gold);
         var red = PlateRing(() => CrestDanger with { A = _overlayBg }, 2f, danger);

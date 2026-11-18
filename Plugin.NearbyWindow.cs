@@ -32,7 +32,7 @@ public sealed partial class Plugin
     private const float NearbyDistW = 36f;   // distance cell width at 1x
 
     // Fixed BOSS/ELITE pill slot width for a row size (the pre-drawn pill for the nearest Crest step).
-    private static float NearbyPillW(float sc) => System.MathF.Round(30f * CrestSteps[CrestStep(sc)]);
+    private static float NearbyPillW(float sc) => System.MathF.Round(40f * CrestSteps[CrestStep(sc)]);
 
     private void RegisterNearbyWindow()
     {
@@ -132,7 +132,7 @@ public sealed partial class Plugin
     }
 
     // Crest look (Plugin.Crest.cs): caption "NEARBY" + "N monsters" + hairline, then a fixed pool of NearbySlots rows:
-    // [30 px rank slot: BOSS / ELITE pill PNG, empty for normal] [bar with the REAL HP fill — boss HP red, elite orange,
+    // [40 px rank slot: BOSS / ELITE pill PNG, empty for normal] [bar with the REAL HP fill — boss HP red, elite orange,
     // normal green; your current target blue + a pale blue wash over the empty part + a 1.5 px white ring] [14 px
     // padlock slot, pale gold while the game is locked on] [distance, soft]. The four fills are bar variants (a gradient
     // is fixed at build). Click a row → target it (as before). Row sizes scale with _nearbyScale; the caption is fixed.
@@ -144,7 +144,7 @@ public sealed partial class Plugin
         int   lockPx  = NearbyLockPx(sc);       // padlock glyph + its slot width: nearest pre-drawn size to 14 × sc
         var   lockPng = NearbyLockPng(lockPx);  // cached bytes; null (missing resource) → slot stays clear
         int   step    = CrestStep(sc);
-        int   pillW   = (int)NearbyPillW(sc), pillH = (int)System.MathF.Round(14f * CrestSteps[step]);
+        int   pillW   = (int)NearbyPillW(sc), pillH = (int)System.MathF.Round(16f * CrestSteps[step]);
         var   bossPill  = CachedPng($"crest-pill-boss-{step}.png");
         var   elitePill = CachedPng($"crest-pill-elite-{step}.png");
 
