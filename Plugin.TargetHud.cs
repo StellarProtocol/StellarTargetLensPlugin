@@ -53,24 +53,26 @@ public sealed partial class Plugin
 
     private void RegisterTargetHud()
     {
-        _monIcon = new MonsterIconLoader(_services);
+        _monIcon ??= new MonsterIconLoader(_services);   // ??= : a bar-size rebuild re-enters here
 
-        // MIN width = the art's two caps (532) + a 120 px middle + padding, so the HP bar never gets shorter than
-        // ~476 px; the out-of-box default is wider (frame ≈ 976 px).
-        const float HudW = FrameCapsW + 120f + 2f * HudPad;
-        const float HudDefaultW = 1000f;
+        _hudLarge = _cfg.Get<int>("hud_bar_size", 0) == 1;   // Slim (1×) by default; Large = 2×
+
+        // MIN width = the art's two caps + a short middle (Slim 266 + 60, Large 532 + 120) + padding, so the HP bar
+        // never gets shorter than ~238 / ~476 px. Defaults: Slim frame ≈ 646 px (the prototype's ~9:1), Large ≈ 976 px.
+        float HudW = HudMinW();
+        float HudDefaultW = _hudLarge ? 1000f : 670f;
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
         // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged.
         //
         // The height is engine-locked for a Resizable window (MinHeight==MaxHeight can't change at runtime — see
-        // WindowBuilder-Patterns.md), so it's chosen ONCE here from the PERSISTED buff style. Read straight from
-        // _cfg (not _buffStyle) so it doesn't depend on which partial's ctor sets that field first.
-        //   List (1) / Off (2): 12 pad + 150 frame + 12 pad = 174 (the break gauge is inside the frame art).
-        //   Classic (0): + 8 column gap + the effect-tile row (44 icon + 2 + ~16 seconds caption ≈ 62) → 244, +4 slack
-        //                for font metrics → 248.
+        // WindowBuilder-Patterns.md), so it's chosen at registration from the PERSISTED buff style + bar size (a bar
+        // size change re-registers the window: SetHudBarSize). Read straight from _cfg (not _buffStyle) so it
+        // doesn't depend on which partial's ctor sets that field first.
+        //   List (1) / Off (2): 12 pad + frame (Slim 75 / Large 150) + 12 pad = 99 / 174 (the break gauge is in the frame).
+        //   Classic (0): + 8 column gap + the effect-tile row (44 icon + 2 + ~16 seconds caption ≈ 62) + 4 slack for
+        //                font metrics → 173 / 248.
         // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
-        int style = _cfg.Get<int>("buff_style", 1);
-        float HudH = style == 0 ? 248f : FrameH + 2f * HudPad;
+        float HudH = HudLockedH();
         // Default position tuned in-game (user's saved 2560x1440 layout: x=984, y=0).
         // Fixed 1440p-calibrated pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path
         // where ScreenWidth is 0, so 0*frac collapsed every window to x=0 — an absolute px restores correctly.
@@ -104,6 +106,26 @@ public sealed partial class Plugin
         // The toggle is the master enable — it controls whether the HUD may show at all.
         _targetHudOn = _cfg.Get<bool>("target_hud_on", true);
         _targetHudWindow.SetVisible(_targetHudOn);
+    }
+
+    private float HudMinW() => FrameCapsW + (_hudLarge ? 120f : 60f) + 2f * HudPad;
+    private float HudLockedH() => FrameH + 2f * HudPad + (_cfg.Get<int>("buff_style", 1) == 0 ? 74f : 0f);
+
+    // Settings → Target HUD → Boss bar size (Slim / Large). Sizes, art, the locked height and the width floor are all
+    // baked at build, so a change re-registers the window — the framework-sanctioned Remove()+Register() (mirrors
+    // RebuildBossTimerWindow). Keeps the user's position and width (widened to the new size's floor if needed) and takes
+    // the new size's locked height; visibility comes from RegisterTargetHud's SetVisible(_targetHudOn) + ShouldRender.
+    private void SetHudBarSize(bool large)
+    {
+        if (large == _hudLarge) return;
+        _cfg.Set<int>("hud_bar_size", large ? 1 : 0);
+        _cfg.Save();
+        var rect = _targetHudWindow.Rect;
+        _windows.Remove(_targetHudWindow);
+        _targetHudWindow.Remove();
+        RegisterTargetHud();   // re-reads hud_bar_size → _hudLarge
+        if (rect.Width <= 0f) return;
+        _targetHudWindow.SetRect(new WindowRect(rect.X, rect.Y, System.Math.Max(rect.Width, HudMinW()), HudLockedH()));
     }
 
     // The boss-bar frame (Plugin.TargetHud.Frame.cs), then — Classic style only (buff_style == 0) — one row of

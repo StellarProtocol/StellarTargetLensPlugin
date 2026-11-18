@@ -3,26 +3,38 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.TargetLens;
 
-// "Resonance Glass" boss-bar frame for the Target HUD (user-approved 2026-11-18; spec + geometry:
-// _scratch/prototypes/targetlens-bossbar-APPROVED.md and tl-bossbar-art-bpsr/README.md). Drawn at 2× — 150 px tall,
-// total width 532 + M where M is the stretched middle (follows the window width).
+// "Celestial Crest" boss-bar frame for the Target HUD (user-chosen 2026-11-18, direction A — replaced Resonance Glass;
+// art + geometry: _scratch/prototypes/tl-bossbar-art-v2/README.md, same slots as v1). Two sizes, picked in Settings →
+// Target HUD → "Boss bar size" (config "hud_bar_size": 0 = Slim, the default; 1 = Large):
+//   Slim  = the 1× art (@1x PNGs), frame 75 px tall, total width 266 + M  — the "slim" ~9:1 look of the prototype.
+//   Large = the 2× art, frame 150 px tall, total width 532 + M.
+// M is the stretched middle (follows the window width). Geometry below is written in 2× px and halved for Slim (G),
+// so both sizes share one layout:
 //
-//   LayerStack   base = a 150 px height strut (the stack is as wide as the window content)
-//     ├─ portrait      (32, 32, 88×88) circle r 44 — UNDER the frame (the art's portrait opening is clear)
+//   LayerStack   base = a frame-height strut (the stack is as wide as the window content)
+//     ├─ portrait      (32, 32, 88×88) circle r 44 — UNDER the frame (the art's portrait socket is transparent)
 //     ├─ frame art     framework 3-slice: left 184 + middle (stretched) + right 348
 //     ├─ badge art     (144, 11, 120×40) gold = BOSS, orange = ELITE, + its text
-//     ├─ name          left-centre at x 276 (144 when there is no badge), drop-shadow copy under it
-//     ├─ distance      right-aligned 80 px cell ending 58 px from the right edge, in the same row as the name
+//     ├─ name row      name left-centred at x 276 (144 with no badge) + the distance, right-aligned, ending 58 px
+//     │                from the right edge (inside the right cap's distance area); dark drop-shadow copy under it
 //     ├─ HP bar        interior (144, 60, 356+M × 40): gradient + gloss + 10 % ticks + damage trail + striped shield
 //     └─ break gauge   interior (144, 112, 56+M × 16), 10 segments, label right of it on the right cap (MaxStunned > 0)
 //
 // Every slot is a StackLayer.Rect (framework 2.34.0) measured from the frame's edges, so a width resize moves anchors
 // only. Art colours are fixed by design (they don't follow the theme). Getters are ≤10 Hz (window refresh) and
 // allocation-free: display strings are cached and rebuilt only when the shown value (or the language) changes.
+// Text: every label is TMP (SDF, sharp at any size) except the HP bar's two labels, which are uGUI dynamic-font Text
+// rasterised at their real pixel size (Scaled(size)) — never a bitmap scaled up — so the 12 px Slim labels stay crisp.
 public sealed partial class Plugin
 {
-    private const float FrameH = 150f;
-    private const float FrameCapsW = 532f;   // left cap 184 + right cap 348
+    private bool _hudLarge;   // config "hud_bar_size" == 1 → Large (2×); default Slim (1×). Baked into the window at build.
+
+    private float FrameH => _hudLarge ? 150f : 75f;
+    private float FrameCapsW => _hudLarge ? 532f : 266f;   // left cap + right cap at native width
+
+    // 2× px → this size's px (Slim halves; .5 rounds away from zero, matching the README's 1× table: 11 → 6).
+    private float G(float px2x) => _hudLarge ? px2x : System.MathF.Round(px2x * 0.5f, System.MidpointRounding.AwayFromZero);
+    private int Fs(int slim, int large) => _hudLarge ? large : slim;   // font size per size (prototype CSS for Slim)
 
     private static ColorRgba Hex(int rgb, float a = 1f)
         => new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, a);
@@ -41,83 +53,87 @@ public sealed partial class Plugin
     private static readonly GradientStop[] BreakGradient  = { new(0f, Hex(0x8fd0ff)), new(1f, Hex(0x2f86e6)) };
     private static readonly GradientStop[] BrokenGradient = { new(0f, Hex(0xffe08a)), new(1f, Hex(0xf29a2a)) };
 
-    // Embedded art (csproj Resources/resonance_glass_*.png), read once and cached by CachedPng (Plugin.Style.Blocks.cs).
-    private static byte[]? FramePng(string piece) => CachedPng("resonance_glass_" + piece + ".png");
-    private static readonly System.Func<byte[]?> FrameLeftPng = () => FramePng("left"), FrameMidPng = () => FramePng("mid"),
-        FrameRightPng = () => FramePng("right"), BadgeGoldPng = () => FramePng("badge_gold"), BadgeOrangePng = () => FramePng("badge_orange");
+    // Embedded art (csproj Resources/celestial_crest_*.png, 2× and @1x), read once and cached by CachedPng
+    // (Plugin.Style.Blocks.cs). The Func is chosen at build, so the size's PNG is resolved once per window build.
+    private System.Func<byte[]?> Art(string piece)
+    {
+        var file = "celestial_crest_" + piece + (_hudLarge ? ".png" : "@1x.png");
+        return () => CachedPng(file);
+    }
 
     private static StackLayer At(HudElement content, LayerRect rect, System.Func<bool>? visible = null)
         => new(content) { Rect = rect, Visible = visible };
 
-    private HudElement BuildTargetHudFrame() => new LayerStackElement(
-        new SpacerElement(Height: FrameH),
-        At(new GameTextureElement(() => GetMonsterPortrait(), 88, 88, () => _portraitUv) { CornerRadius = 44 },
-            new LayerRect { Left = 32, Top = 32, Width = 88, Height = 88 }),
-        new StackLayer(new SlicedImageElement(FrameLeftPng, FrameMidPng, FrameRightPng, (int)FrameH)),
-        // Rank badge: art + text (BOSS / ELITE). Normal monsters: no badge, and the name moves left.
-        At(new ImageElement(BadgeGoldPng, 120, 40) { Crisp = true }, BadgeRect, TargetHudIsBoss),
-        At(new ImageElement(BadgeOrangePng, 120, 40) { Crisp = true }, BadgeRect, TargetHudIsElite),
-        At(new TextElement(() => TargetHudRankText(), Color: () => TargetHudIsBoss() ? BossBadgeText : EliteBadgeText,
-            Align: TextAlign.Center, FontSize: 20) { Bold = true, CenterCaps = true }, BadgeRect, TargetHudHasRank),
-        // Name (white bold) + distance share one row per rank variant, so the name gets every px up to the distance
-        // text and is cut with "…" only when it really doesn't fit. The TMP text path has no shadow, so a dark copy
-        // 2 px down-right (same row width → the same cut) stands in for it.
-        NameRow(276f, true, shadow: true), NameRow(276f, true, shadow: false),
-        NameRow(144f, false, shadow: true), NameRow(144f, false, shadow: false),
-        At(BuildFrameHpBar(), new LayerRect { Left = 144, Right = 32, Top = 60, Height = 40 }),
-        // Break gauge (any target with one, MaxStunned > 0): blue while draining, gold + glow while broken (refill tween).
-        At(BuildFrameBreakBar(BreakGradient, glow: false), BreakRect, () => TargetHudHasBreak() && !TargetHudBroken()),
-        At(BuildFrameBreakBar(BrokenGradient, glow: true), BreakRect, () => TargetHudHasBreak() && TargetHudBroken()),
-        // Label right of the gauge on the right cap (gauge ends 332 px from the right edge; +16 gap).
-        At(new TextElement(() => TargetHudBreakText(), Color: () => TargetHudBroken() ? BrokenLabelCol : BreakLabelCol, FontSize: 20)
-            { Bold = true, CenterCaps = true }, new LayerRect { Right = 56, Width = 260, Top = 104, Height = 32 }, TargetHudHasBreak));
+    private HudElement BuildTargetHudFrame()
+    {
+        var badgeRect = new LayerRect { Left = G(144), Top = G(11), Width = G(120), Height = G(40) };
+        var breakRect = new LayerRect { Left = G(144), Right = G(332), Top = G(112), Height = G(16) };
+        float portrait = G(88);
+        return new LayerStackElement(
+            new SpacerElement(Height: FrameH),
+            At(new GameTextureElement(() => GetMonsterPortrait(), (int)portrait, (int)portrait, () => _portraitUv) { CornerRadius = (int)(portrait / 2f) },
+                new LayerRect { Left = G(32), Top = G(32), Width = portrait, Height = portrait }),
+            new StackLayer(new SlicedImageElement(Art("left"), Art("mid"), Art("right"), (int)FrameH)),
+            // Rank badge: art + text (BOSS / ELITE). Normal monsters: no badge, and the name moves left.
+            At(new ImageElement(Art("badge_gold"), (int)G(120), (int)G(40)) { Crisp = true }, badgeRect, TargetHudIsBoss),
+            At(new ImageElement(Art("badge_orange"), (int)G(120), (int)G(40)) { Crisp = true }, badgeRect, TargetHudIsElite),
+            At(new TextElement(() => TargetHudRankText(), Color: () => TargetHudIsBoss() ? BossBadgeText : EliteBadgeText,
+                Align: TextAlign.Center, FontSize: Fs(11, 20)) { Bold = true, CenterCaps = true }, badgeRect, TargetHudHasRank),
+            // Name (white bold) + distance share one row per rank variant, so the name gets every px up to the distance
+            // text and is cut with "…" only when it really doesn't fit. The TMP text path has no shadow, so a dark copy
+            // 1–2 px down-right (same row width → the same cut) stands in for it.
+            NameRow(G(276), true, shadow: true), NameRow(G(276), true, shadow: false),
+            NameRow(G(144), false, shadow: true), NameRow(G(144), false, shadow: false),
+            At(BuildFrameHpBar(), new LayerRect { Left = G(144), Right = G(32), Top = G(60), Height = G(40) }),
+            // Break gauge (any target with one, MaxStunned > 0): blue while draining, gold + glow while broken (refill tween).
+            At(BuildFrameBreakBar(BreakGradient, glow: false), breakRect, () => TargetHudHasBreak() && !TargetHudBroken()),
+            At(BuildFrameBreakBar(BrokenGradient, glow: true), breakRect, () => TargetHudHasBreak() && TargetHudBroken()),
+            // Label right of the gauge on the right cap (gauge ends 332 px from the right edge; +16 gap).
+            At(new TextElement(() => TargetHudBreakText(), Color: () => TargetHudBroken() ? BrokenLabelCol : BreakLabelCol, FontSize: Fs(11, 20))
+                { Bold = true, CenterCaps = true }, new LayerRect { Right = G(56), Width = G(260), Top = G(104), Height = G(32) }, TargetHudHasBreak));
+    }
 
-    private static readonly LayerRect BadgeRect = new() { Left = 144, Top = 11, Width = 120, Height = 40 };
-    private static readonly LayerRect BreakRect = new() { Left = 144, Right = 332, Top = 112, Height = 16 };
-
-    // One name row on the badge line (y 11..51, centred at 31): name left-centred at x = left, filling the row (Weight)
-    // up to a fixed DistW-wide right-aligned distance cell that ends 58 px from the frame's right edge (inside the right
-    // cap's distance area). The distance cell's min = preferred width, so when the row is short the NAME gives way, and
-    // Ellipsize cuts it per character only past the real row width. (First build: a separate name layer ending at the
-    // distance AREA's left edge, 206 px from the right, + MaxLines = 1, whose cut is whole-word → "Enemy Training..."
-    // with ~390 px free at the user's 740 px window.) Shadow rows keep the same geometry with a spacer for the distance.
-    private const float DistW = 80f;
+    // One name row on the badge line (2×: y 11..51, centred at 31): name left-centred at x = left, filling the row
+    // (Weight) up to a fixed-width right-aligned distance cell ending 58 px (2×) from the frame's right edge. The
+    // distance cell's min = preferred width, so when the row is short the NAME gives way, and Ellipsize cuts it per
+    // character only past the real row width. (A separate name layer ending at the distance AREA + MaxLines = 1 cut
+    // whole words → "Enemy Training..." with ~390 px free, in game 2026-11-18.) Shadow rows: same geometry, spacer.
     private StackLayer NameRow(float left, bool withRank, bool shadow)
     {
-        float d = shadow ? 2f : 0f;
-        var name = new TextElement(() => TargetHudNameLine(), Color: shadow ? () => NameShadowCol : null, FontSize: 30, NoWrap: true)
+        float d = shadow ? G(2) : 0f, distW = G(80);
+        var name = new TextElement(() => TargetHudNameLine(), Color: shadow ? () => NameShadowCol : null, FontSize: Fs(15, 30), NoWrap: true)
             { Bold = true, Ellipsize = true };
         // Distance: small muted regular weight. RichEmoji routes it through the TMP path, the only one honouring FontSize
         // without bold (plain Menu Text is fixed 14 px); "35 m" has no sprite tags, so it renders as plain TMP text.
-        HudElement dist = shadow ? new SpacerElement(Width: DistW)
-            : new CellElement(new TextElement(() => TargetHudDistText(), Color: () => DistColor, Align: TextAlign.Right, FontSize: 18)
-                { RichEmoji = true }, Width: DistW);
-        var row = new RowElement(new HudElement[] { new CellElement(name, Weight: 1f), dist }, Gap: 8f);
-        return At(row, new LayerRect { Left = left + d, Right = 58 - d, Top = 11 + d, Height = 40 },
+        HudElement dist = shadow ? new SpacerElement(Width: distW)
+            : new CellElement(new TextElement(() => TargetHudDistText(), Color: () => DistColor, Align: TextAlign.Right, FontSize: Fs(12, 18))
+                { RichEmoji = true }, Width: distW);
+        var row = new RowElement(new HudElement[] { new CellElement(name, Weight: 1f), dist }, Gap: G(8));
+        return At(row, new LayerRect { Left = left + d, Right = G(58) - d, Top = G(11) + d, Height = G(40) },
             withRank ? TargetHudHasRank : () => !TargetHudHasRank());
     }
 
     private HudElement BuildFrameHpBar() => new BarElement(() => TargetHudHpFraction(), Hex(0xffffff), () => TargetHudHpLabel())
     {
-        Style = BarStyle.Modern, Height = 40f, FillWidth = true, LabelFontSize = 20,
-        LabelAlign = TextAlign.Center, LabelOutline = true, LabelInset = 16f,
+        Style = BarStyle.Modern, Height = G(40), FillWidth = true, LabelFontSize = Fs(12, 20),
+        LabelAlign = TextAlign.Center, LabelOutline = true, LabelInset = G(16),
         SecondaryLabel = () => TargetHudHpPct(), SecondaryLabelColorFn = () => TargetHudHpFraction() < 0.2f ? HpLowColor : null,
         TrackColorFn = () => FrameClear,   // the art's interior is the track
         FillGradient = HpGradient, Gloss = true,
-        Ticks = 10, TickColor = new ColorRgba(0f, 0f, 0f, 0.2f), TickWidth = 1f,   // barely-there 10 % ticks (concept)
+        Ticks = 10, TickColor = new ColorRgba(0f, 0f, 0f, 0.2f), TickWidth = 1f,   // barely-there 10 % ticks (concept), 1 px at both sizes
         Trail01 = () => TargetHudTrailFraction(), TrailColor = Hex(0xf6d0c8),
         // Shield: a striped cyan segment right after the HP fill, [hp, hp + shield] / max (same shield value as before).
         OverlayStart01 = () => TargetHudHpFraction(), Overlay01 = () => TargetHudShieldEndFraction(), OverlayInFront = true,
-        OverlayColor = Hex(0x7ff0ff), OverlayStripeColor = Hex(0x3fc6e6), OverlayStripeWidth = 8f,
-        OverlayGlow = Hex(0x7ff0ff, 0.8f), GlowRadius = 12f,
+        OverlayColor = Hex(0x7ff0ff), OverlayStripeColor = Hex(0x3fc6e6), OverlayStripeWidth = G(8),
+        OverlayGlow = Hex(0x7ff0ff, 0.8f), GlowRadius = G(12),
     };
 
     private HudElement BuildFrameBreakBar(GradientStop[] gradient, bool glow) => new BarElement(() => TargetHudBreakFraction(), Hex(0xffffff))
     {
-        Style = BarStyle.Modern, Height = 16f, FillWidth = true,
+        Style = BarStyle.Modern, Height = G(16), FillWidth = true,
         TrackColorFn = () => FrameClear, FillGradient = gradient,
-        Ticks = 10, TickColor = new ColorRgba(10f / 255f, 16f / 255f, 30f / 255f, 0.9f), TickWidth = 4f,
-        FillGlow = glow ? Hex(0xffb84a, 0.9f) : null, GlowRadius = 12f,
+        Ticks = 10, TickColor = new ColorRgba(10f / 255f, 16f / 255f, 30f / 255f, 0.9f), TickWidth = G(4),
+        FillGlow = glow ? Hex(0xffb84a, 0.9f) : null, GlowRadius = G(12),
     };
 
     // ── Damage trail: holds the previous HP ~0.6 s after a drop, then eases down over ~0.4 s (ease-out). Resets on a

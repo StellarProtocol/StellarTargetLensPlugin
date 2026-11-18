@@ -40,7 +40,8 @@ public sealed partial class Plugin
     }, Gap: SettingsGap);
 
     // ── left column ───────────────────────────────────────────────────────────────────────────────────────────────
-    // TARGET HUD: just the caption + hint + the On/Off chip (the HUD itself has no options here).
+    // TARGET HUD: caption + hint + the On/Off chip, and the boss-bar size (Slim = 1× art, the default; Large = 2×).
+    // A size change re-registers the HUD window (SetHudBarSize), keeping its position and width.
     private HudElement BuildTargetHudSection() => SectionPanel(() => _loc.T("tl.section.targetHud"),
         () => _loc.T("tl.hint.targetHud"),
         OnOffChip(() => _targetHudOn, v =>
@@ -50,7 +51,14 @@ public sealed partial class Plugin
             _cfg.Set<bool>("target_hud_on", v);
             _cfg.Save();
         }),
-        Array.Empty<HudElement>());
+        new HudElement[]
+        {
+            ChoiceRow("tl.row.barSize", "tl.help.barSize", "tl.section.targetHud", new HudElement[]
+            {
+                ChoiceChip("tl.choice.slim",  () => !_hudLarge, () => SetHudBarSize(false), BarSizeChipW),
+                ChoiceChip("tl.choice.large", () => _hudLarge,  () => SetHudBarSize(true),  BarSizeChipW),
+            }),
+        });
 
     // BUFFS / DEBUFFS. No header chip: the Display choice (Classic / List / Off) is the on/off. "Show title" and "Size"
     // only apply to the List window, so they are RECESSED (not hidden) unless Display = List. The SHOW filters and the
