@@ -170,27 +170,39 @@ public sealed partial class Plugin
         FillGlow = glow ? Hex(0xffb84a, 0.9f) : null, GlowRadius = 6f * Geo.Unit,
     };
 
-    // ── Damage trail: holds the previous HP ~0.6 s after a drop, then eases down over ~0.4 s (ease-out). Resets on a
-    //    target change and on heals. Pure arithmetic on TickCount64 — no allocation. Advances at the window refresh rate.
-    private const long TrailHoldMs = 600, TrailEaseMs = 400;
-    private long _trailUuid = long.MinValue, _trailHoldUntil;
-    private float _trailShown, _trailLastHp, _trailFrom;
+    // ── Damage trail (the usual game style): the first hit after the trail has caught up starts ONE ~0.6 s hold; after
+    //    it the trail chases the CURRENT HP — closing ~35 % of the gap per 100 ms (exponential, time-based so the refresh
+    //    rate doesn't matter) with a floor speed — and hits during the hold or the chase never restart the hold. Under
+    //    sustained damage it stays a little behind the fill; once hits stop it catches up in ~0.4 s. A new hold starts
+    //    only after a full catch-up (gap < 0.2 %). A target change or a heal resets it. Pure arithmetic on TickCount64,
+    //    no allocation. (First build re-armed the hold on every drop → under continuous hits the trail never moved
+    //    until the player stopped attacking; in game 2026-11-18.)
+    private const long TrailHoldMs = 600;
+    private const float TrailKeepPer100Ms = 0.65f;   // gap left after each 100 ms of chasing
+    private const float TrailMinSpeed = 0.15f;       // floor: share of the bar per second (finishes small gaps)
+    private const float TrailCaughtUp = 0.002f;      // < 0.2 % = caught up
+    private long _trailUuid = long.MinValue, _trailHoldUntil, _trailLastTick;
+    private float _trailShown;
+    private bool _trailActive;                       // a hold or chase is running (between catch-ups)
 
     private float TargetHudTrailFraction()
     {
         var s = Cur;
         float hp = TargetHudHpFraction();
         long now = System.Environment.TickCount64;
-        if (s.Uuid != _trailUuid || hp >= _trailShown)   // new target, heal, or caught up → no trail
+        float dt = System.Math.Clamp((now - _trailLastTick) / 1000f, 0f, 0.25f);
+        _trailLastTick = now;
+        if (s.Uuid != _trailUuid || hp >= _trailShown - TrailCaughtUp)   // new target, heal, or caught up → no trail
         {
-            _trailUuid = s.Uuid; _trailShown = _trailLastHp = hp; _trailHoldUntil = 0;
+            _trailUuid = s.Uuid; _trailShown = hp; _trailActive = false;
             return hp;
         }
-        if (hp < _trailLastHp) { _trailFrom = _trailShown; _trailHoldUntil = now + TrailHoldMs; }   // a new hit: hold again
-        _trailLastHp = hp;
+        if (!_trailActive) { _trailActive = true; _trailHoldUntil = now + TrailHoldMs; }   // first hit after a catch-up
         if (now < _trailHoldUntil) return _trailShown;
-        float t = (now - _trailHoldUntil) / (float)TrailEaseMs;
-        _trailShown = t >= 1f ? hp : _trailFrom + (hp - _trailFrom) * (1f - (1f - t) * (1f - t));
+        float gap = _trailShown - hp;
+        float step = System.MathF.Max(gap * (1f - System.MathF.Pow(TrailKeepPer100Ms, dt * 10f)), TrailMinSpeed * dt);
+        _trailShown = System.MathF.Max(hp, _trailShown - step);
+        if (_trailShown - hp < TrailCaughtUp) { _trailShown = hp; _trailActive = false; }
         return _trailShown;
     }
 
