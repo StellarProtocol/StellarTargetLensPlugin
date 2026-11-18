@@ -12,9 +12,9 @@ namespace Stellar.TargetLens;
 //     ├─ frame art     framework 3-slice: left 184 + middle (stretched) + right 348
 //     ├─ badge art     (144, 11, 120×40) gold = BOSS, orange = ELITE, + its text
 //     ├─ name          left-centre at x 276 (144 when there is no badge), drop-shadow copy under it
-//     ├─ distance      right cap (150, 12, 140×40), right-aligned
+//     ├─ distance      right-aligned 80 px cell ending 58 px from the right edge, in the same row as the name
 //     ├─ HP bar        interior (144, 60, 356+M × 40): gradient + gloss + 10 % ticks + damage trail + striped shield
-//     └─ break gauge   interior (144, 112, 56+M × 16), 10 segments, label right of it on the right cap (bosses only)
+//     └─ break gauge   interior (144, 112, 56+M × 16), 10 segments, label right of it on the right cap (MaxStunned > 0)
 //
 // Every slot is a StackLayer.Rect (framework 2.34.0) measured from the frame's edges, so a width resize moves anchors
 // only. Art colours are fixed by design (they don't follow the theme). Getters are ≤10 Hz (window refresh) and
@@ -59,14 +59,13 @@ public sealed partial class Plugin
         At(new ImageElement(BadgeOrangePng, 120, 40) { Crisp = true }, BadgeRect, TargetHudIsElite),
         At(new TextElement(() => TargetHudRankText(), Color: () => TargetHudIsBoss() ? BossBadgeText : EliteBadgeText,
             Align: TextAlign.Center, FontSize: 20) { Bold = true, CenterCaps = true }, BadgeRect, TargetHudHasRank),
-        // Name (white bold). The TMP text path has no shadow, so a dark copy 2 px down-right stands in for it.
-        NameLayer(276f, true, shadow: true), NameLayer(276f, true, shadow: false),
-        NameLayer(144f, false, shadow: true), NameLayer(144f, false, shadow: false),
-        // Distance: right cap (150, 12, 140×40) → 58 px from the frame's right edge.
-        At(new TextElement(() => TargetHudDistText(), Color: () => DistColor, Align: TextAlign.Right, FontSize: 22) { Bold = true },
-            new LayerRect { Right = 58, Width = 140, Top = 12, Height = 40 }),
+        // Name (white bold) + distance share one row per rank variant, so the name gets every px up to the distance
+        // text and is cut with "…" only when it really doesn't fit. The TMP text path has no shadow, so a dark copy
+        // 2 px down-right (same row width → the same cut) stands in for it.
+        NameRow(276f, true, shadow: true), NameRow(276f, true, shadow: false),
+        NameRow(144f, false, shadow: true), NameRow(144f, false, shadow: false),
         At(BuildFrameHpBar(), new LayerRect { Left = 144, Right = 32, Top = 60, Height = 40 }),
-        // Break gauge (bosses): blue while draining, gold + glow while broken (refill tween). Elite/normal: empty row.
+        // Break gauge (any target with one, MaxStunned > 0): blue while draining, gold + glow while broken (refill tween).
         At(BuildFrameBreakBar(BreakGradient, glow: false), BreakRect, () => TargetHudHasBreak() && !TargetHudBroken()),
         At(BuildFrameBreakBar(BrokenGradient, glow: true), BreakRect, () => TargetHudHasBreak() && TargetHudBroken()),
         // Label right of the gauge on the right cap (gauge ends 332 px from the right edge; +16 gap).
@@ -76,24 +75,36 @@ public sealed partial class Plugin
     private static readonly LayerRect BadgeRect = new() { Left = 144, Top = 11, Width = 120, Height = 40 };
     private static readonly LayerRect BreakRect = new() { Left = 144, Right = 332, Top = 112, Height = 16 };
 
-    // One name layer: left-centred at x = left on the badge row; stops short of the distance area (206 px from the right).
-    private StackLayer NameLayer(float left, bool withRank, bool shadow)
+    // One name row on the badge line (y 11..51, centred at 31): name left-centred at x = left, filling the row (Weight)
+    // up to a fixed DistW-wide right-aligned distance cell that ends 58 px from the frame's right edge (inside the right
+    // cap's distance area). The distance cell's min = preferred width, so when the row is short the NAME gives way, and
+    // Ellipsize cuts it per character only past the real row width. (First build: a separate name layer ending at the
+    // distance AREA's left edge, 206 px from the right, + MaxLines = 1, whose cut is whole-word → "Enemy Training..."
+    // with ~390 px free at the user's 740 px window.) Shadow rows keep the same geometry with a spacer for the distance.
+    private const float DistW = 80f;
+    private StackLayer NameRow(float left, bool withRank, bool shadow)
     {
         float d = shadow ? 2f : 0f;
-        var text = new TextElement(() => TargetHudNameLine(), Color: shadow ? () => NameShadowCol : null, FontSize: 30)
-            { Bold = true, MaxLines = 1 };
-        return At(text, new LayerRect { Left = left + d, Right = 206 - d, Top = 11 + d, Height = 40 },
+        var name = new TextElement(() => TargetHudNameLine(), Color: shadow ? () => NameShadowCol : null, FontSize: 30, NoWrap: true)
+            { Bold = true, Ellipsize = true };
+        // Distance: small muted regular weight. RichEmoji routes it through the TMP path, the only one honouring FontSize
+        // without bold (plain Menu Text is fixed 14 px); "35 m" has no sprite tags, so it renders as plain TMP text.
+        HudElement dist = shadow ? new SpacerElement(Width: DistW)
+            : new CellElement(new TextElement(() => TargetHudDistText(), Color: () => DistColor, Align: TextAlign.Right, FontSize: 18)
+                { RichEmoji = true }, Width: DistW);
+        var row = new RowElement(new HudElement[] { new CellElement(name, Weight: 1f), dist }, Gap: 8f);
+        return At(row, new LayerRect { Left = left + d, Right = 58 - d, Top = 11 + d, Height = 40 },
             withRank ? TargetHudHasRank : () => !TargetHudHasRank());
     }
 
     private HudElement BuildFrameHpBar() => new BarElement(() => TargetHudHpFraction(), Hex(0xffffff), () => TargetHudHpLabel())
     {
-        Style = BarStyle.Modern, Height = 40f, FillWidth = true, LabelFontSize = 22,
+        Style = BarStyle.Modern, Height = 40f, FillWidth = true, LabelFontSize = 20,
         LabelAlign = TextAlign.Center, LabelOutline = true, LabelInset = 16f,
         SecondaryLabel = () => TargetHudHpPct(), SecondaryLabelColorFn = () => TargetHudHpFraction() < 0.2f ? HpLowColor : null,
         TrackColorFn = () => FrameClear,   // the art's interior is the track
         FillGradient = HpGradient, Gloss = true,
-        Ticks = 10, TickColor = new ColorRgba(0f, 0f, 0f, 0.35f), TickWidth = 2f,
+        Ticks = 10, TickColor = new ColorRgba(0f, 0f, 0f, 0.2f), TickWidth = 1f,   // barely-there 10 % ticks (concept)
         Trail01 = () => TargetHudTrailFraction(), TrailColor = Hex(0xf6d0c8),
         // Shield: a striped cyan segment right after the HP fill, [hp, hp + shield] / max (same shield value as before).
         OverlayStart01 = () => TargetHudHpFraction(), Overlay01 = () => TargetHudShieldEndFraction(), OverlayInFront = true,

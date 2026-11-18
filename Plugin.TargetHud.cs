@@ -186,12 +186,12 @@ public sealed partial class Plugin
         return s.MaxHp > 0 ? Clamp01((float)s.Hp / s.MaxHp) : 0f;
     }
 
-    // ── Break / stagger gauge (bosses + elites; MaxStunned > 0 is the presence signal) ──
-    // Shown for bosses only in the redesign (elite/normal: the break row stays empty, frame keeps its size).
+    // ── Break / stagger gauge (MaxStunned > 0 is the presence signal) ──
+    // Any rank, as the old HUD did (in-game 2026-11-18: the training dummy has one). No gauge → the row stays empty.
     private bool TargetHudHasBreak()
     {
         var s = Cur;
-        return s.HasTarget && s.MaxStunned > 0 && s.Rank == "Boss";
+        return s.HasTarget && s.MaxStunned > 0;
     }
 
     // Per-frame driver for the local break tween. Safe to call repeatedly — BreakGauge frame-gates internally.
