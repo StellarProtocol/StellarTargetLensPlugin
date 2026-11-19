@@ -64,7 +64,7 @@ public sealed partial class Plugin
 
         // MIN width = the art's two caps + a short middle (Slim 266 + 60, Medium 399 + 90, Large 532 + 120 — the badge
         // crosses the left seam and needs ≥ 40 / 60 / 80 px of middle) + padding. Defaults (frame width + 24 padding):
-        // Slim 670, Medium 1000, Large 1300.
+        // Medium 728 (the user-approved layout, 2026-11-19), Slim 485 / Large 971 (scaled by the frame height).
         float HudW = HudMinW();
         float HudDefaultW = Geo.DefaultW;
         // Resizable disables the content-auto-fit and fixes the height, so set an explicit height and lock it
@@ -79,12 +79,11 @@ public sealed partial class Plugin
         //                font metrics → 186 / 230 / 274.
         // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
         float HudH = HudLockedH();
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=984, y=0).
-        // Fixed 1440p-calibrated pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path
-        // where ScreenWidth is 0, so 0*frac collapsed every window to x=0 — an absolute px restores correctly.
-        // y absolute. A user's own saved drag still overrides this.
-        float x = 984f;
-        float y = 0f;
+        // Default position = the user-approved layout (2026-11-19): horizontally CENTRED (WindowAnchor.Top, X offset 0 —
+        // the framework centres the window's own width, so every bar size lands centred), top y = 15. A user's own
+        // saved drag still overrides this.
+        float x = 0f;
+        float y = 15f;
 
         _targetHudWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -95,6 +94,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                Anchor = WindowAnchor.Top,
                 // Width-resizable; height LOCKED via MinHeight==MaxHeight so it can't be dragged.
                 Resizable = true, MinWidth = HudW, MinHeight = HudH, MaxHeight = HudH,
                 // Auto-show: only in-world, only when a target exists, and hidden while any menu/blocking

@@ -41,11 +41,11 @@ public sealed partial class Plugin
         float threatW = 260f * _threatScale;   // narrower than the Target HUD (name + a compact aggro bar + %)
         float threatH = 150f * _threatScale;   // Title + ThreatSlots rows + gaps + padding (fixed; auto-fits)
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 1716f;
-        float y = 4f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19: x=1653, y=13, w=260), Top-anchored: X is
+        // the offset from the horizontally centred spot (1653 − (2560 − 260)/2 = 503), so it keeps its place beside the
+        // centred boss bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = 503f;
+        float y = 13f;
 
         _threatWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -56,7 +56,8 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
+                Anchor = WindowAnchor.Top,
+                BackgroundColor = () => CrestPlateFill(OvThreat), BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Auto-show: mirrors the Target HUD's gate (in-world, no menu/loading/blocking overlay, live target)
                 // plus the show_threat toggle AND a non-empty hate list so it never shows an empty box. Layout-edit
                 // mode overrides so the window can be positioned against its example rows without a live target.
@@ -138,7 +139,7 @@ public sealed partial class Plugin
             var row = new RowElement(new HudElement[] { new CellElement(medal, Width: med), new CellElement(bar, Weight: 1f) }, Gap: 6f * sc);
             rows[s + 1] = new ConditionalElement(() => ThreatRowVisible(idx), row);
         }
-        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
+        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc), OvThreat);
     }
 
     private static readonly ColorRgba MedalInk = CrestHex(0x1a1408);

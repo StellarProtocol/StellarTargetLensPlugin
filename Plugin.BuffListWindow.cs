@@ -38,16 +38,17 @@ public sealed partial class Plugin
         // Height band = chrome padding + the (unscaled) Crest caption block + 3..16 rows at the SCALED stride, so the
         // resize cap grows WITH the rows. The window stays user-resizable within this band (never forced);
         // BuffListVisibleRows floors the dragged height by the same stride. Width scales so the name budget fits.
-        float minH = 2f * ChromePad + CaptionReserve + MinRows * BuffRowStride - 3f * _listScale;
-        float maxH = 2f * ChromePad + CaptionReserve + MaxRows * BuffRowStride - 3f * _listScale;
-        float defH = maxH;   // out-of-box height = the full row pool at the current scale (top of the resize band)
+        float minH = BuffListFixedH + MinRows * BuffRowStride - 3f * _listScale;
+        float maxH = BuffListFixedH + MaxRows * BuffRowStride - 3f * _listScale;
+        // Default height = the user-approved layout (239 at 1×, 2026-11-19), its row part scaled with the rows.
+        float defH = System.Math.Clamp(BuffListFixedH + (239f - BuffListFixedH) * _listScale, minH, maxH);
         float winW = ListW * _listScale;
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 690f;
-        float y = 73f;
+        // Default position = the user-approved layout (2560x1440: x=360, y=12, w=300), Top-anchored: X is the offset
+        // from the horizontally centred spot (360 − (2560 − 300)/2 = −770), so it keeps its place beside the centred
+        // boss bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = -770f;
+        float y = 12f;
 
         _buffListWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -58,13 +59,13 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
+                Anchor = WindowAnchor.Top,
                 // Height-resizable (row count follows height); width-resizable for name room. Height clamped to the
                 // 3..16-row band so it can neither hide the title nor exceed the fixed slot pool.
                 Resizable = true, MinWidth = winW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: mirrors the Target HUD gate (in-world, no menu/loading/blocking overlay, live target),
-                // plus the List style selected. With no effects it shows the Crest empty state ("No effects on this
-                // target") at the same size. Layout-edit mode overrides so it can be placed against its example rows.
+                // plus the List style selected. With no effects the window stays mounted but draws nothing (its plate hugs
+                // the rows). Layout-edit mode overrides so it can be placed against its example rows.
                 ShouldRender = () => _services.Windows.IsLayoutEditing
                                   || (_services.ClientState.Phase == GamePhase.World
                                       && (_services.ClientState.UiState & (GameUIState.Loading | GameUIState.Blocking | GameUIState.AnyMenu)) == 0
@@ -117,12 +118,8 @@ public sealed partial class Plugin
         float barH   = 20f * sc;
         int   fontPx = (int)System.Math.Round(12 * sc);
 
-        var rows = new HudElement[BuffListSlots + 2];
+        var rows = new HudElement[BuffListSlots + 1];
         rows[0] = CrestCaption("tl.cap.effects", () => BuffListHint(), () => _showEffectTitle);
-        // Empty state: a recessed line with soft italic text (the window keeps its size).
-        rows[1] = new ConditionalElement(() => BuffListEmpty(),
-            new BubbleElement(new TextElement(() => _loc.T("tl.effects.empty"), Color: () => CrestSoft, FontSize: 11, NoWrap: true) { Italic = true })
-            { FillColor = EmptyLineFill, CornerRadius = 3f, PaddingX = 8f, PaddingY = 2f });
         for (int s = 0; s < BuffListSlots; s++)
         {
             int idx = s;
@@ -136,10 +133,14 @@ public sealed partial class Plugin
                     Weight: 1f),
             }, Gap: 6f * sc);
             // Prebuild: built in the background even while no row is live (the window pre-build's fill has no target).
-            rows[s + 2] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
+            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
         }
-        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
+        // Content-hugging plate; with no effects nothing draws at all (the window keeps its rect).
+        return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvEffects, () => _showEffectTitle, () => BuffListShownRows(),
+            BuffListSlots, barH, sc);
     }
 
-    private static readonly ColorRgba EmptyLineFill = new(6f / 255f, 9f / 255f, 20f / 255f, 0.7f);
+    // Window height that isn't rows: chrome padding + the plate padding + the caption block.
+    private const float BuffListFixedH = 2f * ChromePad + 2f * PlatePadY + CaptionReserve;
+    private int BuffListShownRows() => System.Math.Min(BuffListVisibleRows(), ListEffects().Count);
 }

@@ -59,9 +59,6 @@ public sealed partial class Plugin
                 ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
                 ChoiceChip("tl.choice.large",  () => _hudSize == 2, () => SetHudBarSize(2), BarSizeChipW),
             }),
-            // One background for all five overlays (threat, cast bar, boss skills, effects list, nearby): the navy plate +
-            // gold ring opacity; 0 % = floating. Live while dragging, saved once the drag settles (TickOverlayBgSave).
-            PercentSliderRow("tl.row.overlayBg", "tl.help.overlayBg", "tl.section.targetHud", () => _overlayBg, SetOverlayBg),
         });
 
     // BUFFS / DEBUFFS. No header chip: the Display choice (Classic / List / Off) is the on/off. "Show title" and "Size"
@@ -88,6 +85,8 @@ public sealed partial class Plugin
             // List-mode row size (1.0–2.5x): the drag only stashes the value + readout; the buff-list window is rebuilt
             // ONCE after the slider settles (SetListScale → TickListScaleRebuild), so a live drag never tears it down.
             SliderRow("tl.row.size", "tl.help.buffSize", "tl.section.buffs", () => _listScale, SetListScale, listMode),
+            // The List window's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+            PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.buffs", () => _overlayBg[OvEffects], SetOverlayBg(OvEffects), listMode),
             SubCaption("tl.sub.show"),
             ChipRow("tl.row.byMe", "tl.help.byMe", "tl.section.buffs", () => _showMine, v =>
             {
@@ -153,6 +152,8 @@ public sealed partial class Plugin
                 }, on),
                 // Rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.threatSize", "tl.section.threat", () => _threatScale, SetThreatScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.threat", () => _overlayBg[OvThreat], SetOverlayBg(OvThreat), on),
             });
     }
 
@@ -171,6 +172,8 @@ public sealed partial class Plugin
             {
                 // Rebuilt ONCE after the slider settles (SetCastScale → TickCastScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.castSize", "tl.section.castBar", () => _castScale, SetCastScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.castBar", () => _overlayBg[OvCast], SetOverlayBg(OvCast), on),
             });
     }
 
@@ -196,6 +199,8 @@ public sealed partial class Plugin
                 // Rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.bossSize", "tl.section.bossTimers", () => _bossTimerScale,
                     SetBossTimerScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.bossTimers", () => _overlayBg[OvBoss], SetOverlayBg(OvBoss), on),
             });
     }
 
@@ -230,6 +235,8 @@ public sealed partial class Plugin
                     }, on),
                 // Rebuilt ONCE after the slider settles (SetNearbyScale → TickNearbyScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.nearbySize", "tl.section.nearby", () => _nearbyScale, SetNearbyScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.nearby", () => _overlayBg[OvNearby], SetOverlayBg(OvNearby), on),
             });
     }
 }

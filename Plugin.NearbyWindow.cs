@@ -55,17 +55,16 @@ public sealed partial class Plugin
         // height = chrome padding + the (unscaled) caption block + all NearbySlots rows; the drag band runs from ~2 rows
         // to double that. The row pool is FIXED (dragging taller adds empty plate below; shorter clips the bottom rows).
         float rowsH   = (NearbySlots * 23f - 3f) * sc;
-        float nearbyH = 2f * ChromePad + CaptionReserve + rowsH;   // ~235 at 1x (DEFAULT open height = all 8 rows)
+        float nearbyH = 2f * ChromePad + 2f * PlatePadY + CaptionReserve + rowsH;   // ~249 at 1x (DEFAULT = all 8 rows)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
-        float minH    = 2f * ChromePad + CaptionReserve + (2 * 23f - 3f) * sc;
+        float minH    = 2f * ChromePad + 2f * PlatePadY + CaptionReserve + (2 * 23f - 3f) * sc;
         float maxH    = nearbyH * 2f;
 
-        // Default position on the left side, clear of the other overlays' defaults (threat x=1716, boss-timer x=690).
-        // Fixed 1440p-calibrated pixel literals (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a
-        // path where ScreenWidth is 0, so 0*frac would collapse every window to x=0 — an absolute px restores right.
-        float x = 40f;
-        float y = 300f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19): x=12, y=303 from the top-left corner
+        // (WindowAnchor.TopLeft). A saved (user-moved) rect always wins over this.
+        float x = 12f;
+        float y = 303f;
 
         _nearbyWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -76,7 +75,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
+                Anchor = WindowAnchor.TopLeft,   // user-approved layout: x=12, y=303 from the top-left (2026-11-19)
                 // Width-resizable so longer names fit; height now ALSO drag-resizable within minH..maxH (user dialing size in live).
                 Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, AND a non-empty nearby list so
@@ -193,6 +192,8 @@ public sealed partial class Plugin
                 }) { Bare = true };
             rows[s + 1] = new ConditionalElement(() => NearbyRowVisible(idx), selectable);
         }
-        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
+        // Content-hugging plate (Plugin.Crest.cs): wraps the caption + the live rows, transparent below.
+        return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvNearby, () => _showNearbyTitle,
+            () => System.Math.Min(NearbyDisplay().Count, NearbySlots), NearbySlots, barH, sc);
     }
 }

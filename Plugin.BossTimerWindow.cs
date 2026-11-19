@@ -48,19 +48,21 @@ public sealed partial class Plugin
         _showBossTimerTitle = _cfg.Get<bool>("show_bosstimer_title", true);
 
         float sc = _bossTimerScale;
-        float TimerW = 300f * sc;   // default width tuned in-game (240–700 band at 1×): icon + name + MM:SS
+        float TimerW = 246f * sc;   // default width = the user-approved layout (2026-11-19; 240–700 band at 1×)
         // Chrome padding + the (unscaled) Crest caption block + BossTimerSlots rows (20 px bar + 3 px gap, scaled). The
         // window is WIDTH-resizable (drag wider to fit longer skill names); Resizable disables content-auto-fit and
         // FIXES the height, so it is computed here and LOCKED below (MinHeight==MaxHeight). Independent of _listScale.
-        float timerH  = 2f * ChromePad + CaptionReserve + (BossTimerSlots * 23f - 3f) * sc;   // ≈ 235 at 1× (locked)
+        float timerH  = 2f * ChromePad + 2f * PlatePadY + CaptionReserve + (BossTimerSlots * 23f - 3f) * sc;   // ≈ 249 at 1× (locked)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
 
         // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=0). Fixed 1440p-calibrated
         // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
         // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 690f;
-        float y = 0f;
+        // User-approved layout (2560x1440: x=665, y=10, w=246), Top-anchored: offset from the centred spot
+        // (665 − (2560 − 246)/2 = −492) so it stays beside the centred boss bar at any resolution. Saved rect wins.
+        float x = -492f;
+        float y = 10f;
 
         _bossTimerWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -71,7 +73,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
+                Anchor = WindowAnchor.Top,
                 // Width-resizable so longer skill names fit; height LOCKED via MinHeight==MaxHeight so only the
                 // width drags. MinWidth ≈ the default width (real drag floor); MaxWidth a generous ceiling.
                 Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = timerH, MaxHeight = timerH,
@@ -151,6 +153,8 @@ public sealed partial class Plugin
             }, Gap: 6f * sc);
             rows[s + 1] = new ConditionalElement(() => BossTimerRowVisible(idx), row);
         }
-        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc));
+        // Content-hugging plate (Plugin.Crest.cs): wraps the caption + the live rows, transparent below.
+        return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvBoss, () => _showBossTimerTitle,
+            () => System.Math.Min(BossTimerRows().Count, BossTimerSlots), BossTimerSlots, barH, sc);
     }
 }

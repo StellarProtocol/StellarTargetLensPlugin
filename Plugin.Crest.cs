@@ -12,7 +12,7 @@ namespace Stellar.TargetLens;
 //             no fill gradient) + a 1 px gold ring. The ring is a transparent BubbleElement in a LayerStack overlay placed
 //             12 px OUTSIDE the content (StackLayer.Rect with negative insets = the Borderless chrome's padding), so ring
 //             and fill both follow the window rect at every size. Both fade with the "Overlay background" slider
-//             (0 % = floating, as before the redesign; rows keep their tracks).
+//             (0 % = floating, as before the redesign; rows keep their tracks). One slider per overlay.
 //   Caption = gold diamond + gold UPPERCASE bold caption + a live hint right-aligned, then a gold hairline (3-piece
 //             stretch strip) with 3 px above / 6 px below. Captions keep their fixed size (only rows scale).
 //   Bars    = Modern BarElement, rounded (CornerRadius, fw 2.34), vertical gradient (light → mid at 55 % → dark) + gloss,
@@ -48,29 +48,39 @@ public sealed partial class Plugin
     private static readonly GradientStop[] GradElite  = CrestGrad(0xffc27a, 0xf28c26, 0xa8520e);
     private static readonly GradientStop[] GradGreen  = CrestGrad(0xa8eaa0, 0x5cbf5a, 0x2a7a2e);
 
-    // ── Overlay background (Settings → Target HUD; config "overlay_bg", 0..1, default 1 = opaque plate) ──
-    private float _overlayBg = 1f;
+    // ── Background opacity, one per overlay (Settings → each overlay's section; 0..1, default 1 = opaque plate) ──
+    // Index = OvEffects / OvBoss / OvNearby / OvThreat / OvCast. Config "bg_<window>"; a value saved by the earlier
+    // SHARED "Overlay background" slider ("overlay_bg") seeds all five once (until each gets its own saved value).
+    // Polled per refresh by the plate Funcs, so a drag repaints live with no rebuild.
+    private const int OvEffects = 0, OvBoss = 1, OvNearby = 2, OvThreat = 3, OvCast = 4;
+    private static readonly string[] OverlayBgKeys = { "bg_bufflist", "bg_bosstimer", "bg_nearby", "bg_threat", "bg_castbar" };
+    private readonly float[] _overlayBg = { 1f, 1f, 1f, 1f, 1f };
     private long  _overlayBgDirtyAtMs = -1;
 
-    private void LoadOverlayBg() => _overlayBg = Math.Clamp(_cfg.Get<float>("overlay_bg", 1f), 0f, 1f);
-
-    // Live while dragging (the plates repaint at the next refresh); persisted once the drag settles (no Save per frame).
-    private void SetOverlayBg(float v)
+    private void LoadOverlayBg()
     {
-        _overlayBg = Math.Clamp(v, 0f, 1f);
-        _overlayBgDirtyAtMs = Environment.TickCount64;
+        float shared = Math.Clamp(_cfg.Get<float>("overlay_bg", 1f), 0f, 1f);
+        for (int i = 0; i < _overlayBg.Length; i++)
+            _overlayBg[i] = Math.Clamp(_cfg.Get<float>(OverlayBgKeys[i], shared), 0f, 1f);
     }
+
+    // Live while dragging (the plate repaints at the next refresh); persisted once the drag settles (no Save per frame).
+    private Action<float> SetOverlayBg(int which) => v =>
+    {
+        _overlayBg[which] = Math.Clamp(v, 0f, 1f);
+        _overlayBgDirtyAtMs = Environment.TickCount64;
+    };
 
     private void TickOverlayBgSave()
     {
         if (_overlayBgDirtyAtMs < 0 || (_overlayBgDirtyAtMs > 0 && Environment.TickCount64 - _overlayBgDirtyAtMs < ListScaleSettleMs)) return;
         _overlayBgDirtyAtMs = -1;
-        _cfg.Set<float>("overlay_bg", _overlayBg);
+        for (int i = 0; i < _overlayBg.Length; i++) _cfg.Set<float>(OverlayBgKeys[i], _overlayBg[i]);
         _cfg.Save();
     }
 
     // Window backdrop = the plate fill (WindowSpec.BackgroundColor; alpha 0 = not drawn).
-    private ColorRgba CrestPlateFill() => new(0x11 / 255f, 0x1a / 255f, 0x36 / 255f, _overlayBg);
+    private ColorRgba CrestPlateFill(int which) => new(0x11 / 255f, 0x1a / 255f, 0x36 / 255f, _overlayBg[which]);
     private const int CrestPlateRadius = 6;
     private const float ChromePad = 12f;   // Borderless chrome content padding (WindowBuilder.BuildBorderless)
 
@@ -80,13 +90,49 @@ public sealed partial class Plugin
     // — sized to the base — lands on the true window edge. Rows stay top-aligned (the content column doesn't stretch
     // its children). Content-fit windows have no leftover, so nothing changes there. (In game 2026-11-18: without it the
     // ring wrapped only the rows of Nearby / Effects and left an un-ringed strip of plate below.)
-    private HudElement CrestFrame(HudElement content, Func<bool>? danger = null)
+    private HudElement CrestFrame(HudElement content, int which, Func<bool>? danger = null)
     {
         content = new ConditionalElement(() => true, content, Fill: true);
-        var gold = PlateRing(() => CrestRingNeutral with { A = 0.62f * _overlayBg }, 1f, danger == null ? null : () => !danger());
+        var gold = PlateRing(() => CrestRingNeutral with { A = 0.62f * _overlayBg[which] }, 1f, danger == null ? null : () => !danger());
         if (danger == null) return new LayerStackElement(content, gold);
-        var red = PlateRing(() => CrestDanger with { A = _overlayBg }, 2f, danger);
+        var red = PlateRing(() => CrestDanger with { A = _overlayBg[which] }, 2f, danger);
         return new LayerStackElement(content, gold, red);
+    }
+
+    // ── Content-hugging plate (Target effects List, Boss skills, Nearby — in game 2026-11-19: the window rect stays the
+    //    user's, the plate wraps only what is shown, top-anchored, transparent below; nothing at all with zero rows) ──
+    //
+    // The plate is a rounded BubbleElement (fill + gold ring, both fading with the Overlay background slider) whose
+    // content is only SPACER STRUTS: one caption strut (shown with the "Show title" toggle) + a ListElement of
+    // row-height struts whose visible count = the rows actually shown. So the plate grows/shrinks with the rows through
+    // normal layout, and the bubble's width re-measure (a forced layout rebuild of its content) only runs when that
+    // COUNT changes — on a few empty spacers. The real rows sit in a LayerStack overlay inset by the plate padding:
+    // wrapping them in the bubble itself would force-rebuild the whole list every time a timer / % / distance text
+    // changes (BubbleBinding.Measure). BlocksInput keeps the rows clickable (a non-blocking layer is click-through).
+    // `rows` MUST equal the number of row Conditionals the content shows, and each row must be exactly rowH tall.
+    private const float PlatePadX = 8f, PlatePadY = 7f;
+
+    private HudElement CrestHugFrame(HudElement content, int which, Func<bool> showCaption, Func<int> rows, int maxRows, float rowH, float sc)
+    {
+        var struts = new HudElement[maxRows];
+        for (int i = 0; i < maxRows; i++) struts[i] = new SpacerElement(Height: rowH);
+        var plate = new BubbleElement(new ColumnElement(new HudElement[]
+            {
+                new ConditionalElement(showCaption, new SpacerElement(Height: CaptionReserve)),
+                new ListElement(rows, struts) { Gap = 3f * sc },
+            }, Gap: 3f * sc))
+        {
+            FillColor = CrestClear, FillColorFn = () => CrestPlateFill(which), CornerRadius = CrestPlateRadius,
+            PaddingX = PlatePadX, PaddingY = PlatePadY,
+            OutlineColorFn = () => CrestRingNeutral with { A = 0.62f * _overlayBg[which] }, OutlineWidth = 1f,
+        };
+        var stack = new LayerStackElement(plate, new StackLayer(content)
+        {
+            Rect = new LayerRect { Left = PlatePadX, Right = PlatePadX, Top = PlatePadY, Bottom = PlatePadY },
+            BlocksInput = true,
+        });
+        // Zero rows → nothing draws (no plate, ring or caption); the window keeps its rect.
+        return new ConditionalElement(() => rows() > 0, stack);
     }
 
     private static StackLayer PlateRing(Func<ColorRgba?> color, float width, Func<bool>? visible) =>

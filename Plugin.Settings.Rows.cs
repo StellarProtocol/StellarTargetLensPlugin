@@ -84,9 +84,10 @@ public sealed partial class Plugin
             HelpDot(labelKey, helpKey, sectionKey));
     }
 
-    // label … [round-knob slider 0–100 %] [muted "80%"] [?] (the overlay background opacity). Readout rebuilt only when
+    // label … [round-knob slider 0–100 %] [muted "80%"] [?] (an overlay's background opacity). Readout rebuilt only when
     // the shown whole percent changes.
-    private HudElement PercentSliderRow(string labelKey, string helpKey, string sectionKey, Func<float> get, Action<float> set)
+    private HudElement PercentSliderRow(string labelKey, string helpKey, string sectionKey, Func<float> get, Action<float> set,
+        Func<bool>? enabled = null)
     {
         int shown = -1;
         string text = string.Empty;
@@ -97,9 +98,10 @@ public sealed partial class Plugin
             return text;
         }
         return SettingRow(
-            RowLabel(() => _loc.T(labelKey), null),
-            new CellElement(RoundSlider(get, set, 0f, 1f, null), Width: SliderTrackW),
-            new CellElement(new TextElement(Value, Color: () => MutedText(), Align: TextAlign.Right, NoWrap: true), Width: SliderValueW),
+            RowLabel(() => _loc.T(labelKey), enabled),
+            new CellElement(RoundSlider(get, set, 0f, 1f, enabled), Width: SliderTrackW),
+            new CellElement(new TextElement(Value, Color: () => On(enabled) ? MutedText() : DisabledLabel(PanelColor()),
+                Align: TextAlign.Right, NoWrap: true), Width: SliderValueW),
             HelpDot(labelKey, helpKey, sectionKey));
     }
 

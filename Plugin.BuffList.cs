@@ -91,8 +91,8 @@ public sealed partial class Plugin
     private int BuffListVisibleRows()
     {
         float h = _buffListWindow != null ? _buffListWindow.Rect.Height : 0f;
-        if (h < 1f) h = 2f * ChromePad + CaptionReserve + 8f * BuffRowStride;   // pre-mount fallback ≈ 8 rows
-        int rows = (int)((h - 2f * ChromePad - CaptionReserve + 3f * _listScale) / BuffRowStride);
+        if (h < 1f) h = BuffListFixedH + 8f * BuffRowStride;   // pre-mount fallback ≈ 8 rows
+        int rows = (int)((h - BuffListFixedH + 3f * _listScale) / BuffRowStride);
         return System.Math.Clamp(rows, 1, BuffListSlots);
     }
 
@@ -117,8 +117,6 @@ public sealed partial class Plugin
 
     // A row renders only when it has a live effect AND fits at the current window height.
     private bool BuffListRowVisible(int idx) => idx < BuffListVisibleRows() && idx < ListEffects().Count;
-
-    private bool BuffListEmpty() => ListEffects().Count == 0;
 
     // Caption hint "2 debuffs · 2 buffs": rebuilt only when a count or the language template changes.
     private int _blHintD = -1, _blHintB = -1; private string? _blHintTpl; private string _blHint = "";

@@ -43,11 +43,11 @@ public sealed partial class Plugin
         float castW = 340f * _castScale;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
         float castH = 28f * _castScale + 2f * ChromePad;   // one row (28 px icon) + chrome padding → content-fit anyway
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1377, y=120). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 1377f;
-        float y = 120f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19: x=1281, y=151, w=340), Top-anchored:
+        // offset from the horizontally centred spot (1281 − (2560 − 340)/2 = 171), so it stays under the centred boss
+        // bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = 171f;
+        float y = 151f;
 
         _castBarWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -58,7 +58,8 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
-                BackgroundColor = CrestPlateFill, BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
+                Anchor = WindowAnchor.Top,
+                BackgroundColor = () => CrestPlateFill(OvCast), BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, a live target, AND that
                 // target actively casting. Layout-edit mode overrides so the overlay (with example data) can be
                 // positioned without a live cast.
@@ -130,7 +131,7 @@ public sealed partial class Plugin
         {
             new CellElement(icon, Width: iconPx),
             new CellElement(bars, Weight: 1f),
-        }, Gap: 6f * sc), danger: () => CastCur().Danger);
+        }, Gap: 6f * sc), OvCast, danger: () => CastCur().Danger);
     }
 
     // ── Getters (layout-edit example data wins only when NOT actually casting) ──
