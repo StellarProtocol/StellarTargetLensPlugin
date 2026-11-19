@@ -85,8 +85,7 @@ public sealed partial class Plugin
         // Description priority: English game text → game data.
         _tipDesc = !string.IsNullOrEmpty(trDesc) ? StripTags(trDesc) : StripTags(info?.Description);
         _tipSource = string.IsNullOrEmpty(r.SkillName) ? "" : $"Source: {r.SkillName}";
-        _tipTex      = GetHudEffectIcon(idx);   // reuse the tile icon (also refreshes _hudEffUv[idx])
-        _tipUv       = _hudEffUv[idx];
+        _tipTex      = EffectIcon(r, 36f, out _tipUv);   // this row's icon (placeholder when it has none), at the tooltip's size
         _tipShownFor = idx;
         ShowTargetTipAtCursor();
     }

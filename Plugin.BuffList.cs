@@ -136,7 +136,7 @@ public sealed partial class Plugin
     {
         var list = ListEffects();
         if (idx >= list.Count) { _buffListUv[idx] = default; return null; }
-        return ResolveEffectIcon(list[idx], out _buffListUv[idx]);
+        return EffectIcon(list[idx], 20f * _listScale, out _buffListUv[idx]);   // icon-less → placeholder inside the ring
     }
 
     // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast). SAME predicate as

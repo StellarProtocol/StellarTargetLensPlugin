@@ -8,6 +8,7 @@ namespace Stellar.TargetLens;
 public sealed partial class Plugin
 {
     private const float TileStride = 48f;              // ≈ CooldownBar CdTileIcon (44) + 4px gap
+    private const float TileArtUnits = 42f;            // the tile's art inside its 1px frame (placeholder size pick)
 
     // Single row of CooldownTileElements (same element the CooldownBar plugin uses) plus a trailing "+N"
     // overflow label. Fixed 12-slot pool with a captured idx per tile; only the tiles that both have a live
@@ -27,7 +28,7 @@ public sealed partial class Plugin
                 Accent:      () => HudEffectAccent(idx),
                 IsImagine:   () => HudEffectIsMine(idx),
                 ChargeCount: () => HudEffectCharge(idx))
-            { OnClick = () => OnTargetEffectClick(idx), FallbackLabel = () => HudEffectLabel(idx) };
+            { OnClick = () => OnTargetEffectClick(idx) };   // icon-less effect → placeholder tile (Plugin.EffectPlaceholder.cs)
             cells[c] = new ConditionalElement(() => HudEffectTileVisible(idx), tile);
         }
         // Trailing "+N" overflow label — shown when more effects exist than tiles fit on the line.
@@ -55,12 +56,12 @@ public sealed partial class Plugin
     }
 
     // Tile-path icon: resolve into this slot's UV cell. Shared priority logic lives in ResolveEffectIcon
-    // (Plugin.BuffList.cs) so the List window's rows resolve icons identically.
+    // (Plugin.BuffList.cs) so the List window's rows resolve icons identically; no icon → the placeholder tile.
     private object? GetHudEffectIcon(int idx)
     {
         var list = CurEffects();
         if (idx >= list.Count) { _hudEffUv[idx] = default; return null; }
-        return ResolveEffectIcon(list[idx], out _hudEffUv[idx]);
+        return EffectIcon(list[idx], TileArtUnits, out _hudEffUv[idx]);
     }
 
     // ★-badge predicate: true when the effect was cast by the LOCAL PLAYER (self-cast). The star now marks
@@ -73,37 +74,12 @@ public sealed partial class Plugin
         return local != 0 && list[idx].FireUuid == local;
     }
 
-    // 2-letter tile: the framework draws this (FallbackLabel) only when an effect has no icon. This plugin opts
-    // into the feature simply by wiring it here, so it's always on. Letters come from the same resolved display
-    // name the tooltip shows.
-    private string HudEffectLabel(int idx)
-    {
-        var list = CurEffects();
-        if (idx >= list.Count) return "";
-        return Abbrev(ResolveEffectName(list[idx]));
-    }
-
     // Display-name priority: manual override → English game text (fw GameText) → tracker's live (Chinese) name.
     private string ResolveEffectName(TargetBuffRow r)
     {
         if (EffectOverrides.TryGetValue(r.BaseId, out var ov) && !string.IsNullOrEmpty(ov.Name)) return ov.Name;
         if (GameTextName(r.BaseId) is { Length: > 0 } tn) return tn;
         return r.Name ?? "";
-    }
-
-    // First two letter/digit characters of the (tag-stripped) name, uppercased.
-    private static string Abbrev(string name)
-    {
-        name = StripTags(name);
-        char a = '\0', b = '\0';
-        foreach (var c in name)
-        {
-            if (!char.IsLetterOrDigit(c)) continue;
-            if (a == '\0') a = char.ToUpperInvariant(c);
-            else { b = char.ToUpperInvariant(c); break; }
-        }
-        if (a == '\0') return "";
-        return b == '\0' ? a.ToString() : new string(new[] { a, b });
     }
 
     private float HudEffectFraction(int idx)
