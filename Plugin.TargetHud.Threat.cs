@@ -33,12 +33,14 @@ public sealed partial class Plugin
     private readonly List<TargetInfoTracker.ThreatEntry> _threatDisp = new();
 
     // Representative sample shown while the layout editor is active and no monster is locked (mirrors ExampleEffects).
+    // Row 4 is a Thai player name on purpose (a sample NAME, not UI text — so it is not localized): it shows the Thai
+    // bar-label path (framework ThaiTmpTwin + its dark edge) without a Thai player in range.
     private static readonly TargetInfoTracker.ThreatEntry[] ExampleThreat =
     {
         new(1, "Vanguard",  8000, 0.62f, false),
         new(2, "You",       3000, 0.23f, true),
         new(3, "Mender",    1400, 0.11f, false),
-        new(4, "Arcanist",   500, 0.04f, false),
+        new(4, "หมุนing",    500, 0.04f, false),
     };
 
     private IReadOnlyList<TargetInfoTracker.ThreatEntry> ThreatDisplay()
