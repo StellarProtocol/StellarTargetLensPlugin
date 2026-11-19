@@ -35,7 +35,7 @@ public sealed partial class Plugin
     // the boss enrage-TIMER buff family ("Power Sealed" and siblings) applied by a boss mechanic skill: each buff's
     // own table icon is correct (buff_talent_skill_330301) but the applying skill's icon is unrelated, so the normal
     // source-skill-first order picks the wrong art. All ten share the buff_talent_skill_330301 (enrage-timer) icon
-    // (verified against Resources/BuffTable.json).
+    // (verified against the game's BuffTable data).
     private static readonly HashSet<int> ForceOwnBuffIcon = new()
     {
         501706, 501710, 501712, 501714, 851388, 880803, 881613, 974342, 995191, 2100106,

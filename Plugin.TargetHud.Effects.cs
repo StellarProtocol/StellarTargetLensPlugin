@@ -83,12 +83,11 @@ public sealed partial class Plugin
         return Abbrev(ResolveEffectName(list[idx]));
     }
 
-    // Display-name priority: manual override → English-translated table → tracker's live (Chinese) name.
+    // Display-name priority: manual override → English game text (fw GameText) → tracker's live (Chinese) name.
     private string ResolveEffectName(TargetBuffRow r)
     {
         if (EffectOverrides.TryGetValue(r.BaseId, out var ov) && !string.IsNullOrEmpty(ov.Name)) return ov.Name;
-        TranslatedBuffText.EnsureLoaded(_services.Log.Info);
-        if (TranslatedBuffText.TryGet(r.BaseId, out var tn, out _) && !string.IsNullOrEmpty(tn)) return tn;
+        if (GameTextName(r.BaseId) is { Length: > 0 } tn) return tn;
         return r.Name ?? "";
     }
 

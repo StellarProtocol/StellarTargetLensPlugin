@@ -54,6 +54,7 @@ public sealed partial class Plugin : IStellarPlugin
         _selection = TargetEffectSelection.Load(_selCfg);
         _targetBuff.Selection = _selection;
 
+        InitGameText();               // English effect names / descriptions from the framework (Plugin.GameText.cs)
         RegisterTargetHud();          // top-right auto-showing combat-target overlay (reuses the two trackers above)
         RegisterTargetHudTooltip();   // click-to-info tooltip for the HUD's buff/debuff tiles
         LoadOverlayBg();              // per-overlay background opacity for the five Crest overlays (Plugin.Crest.cs)
@@ -109,6 +110,7 @@ public sealed partial class Plugin : IStellarPlugin
     public void Dispose()
     {
         try { _services.Framework.Update -= OnTargetHudUpdate; } catch { }
+        DisposeGameText();
         if (_overlayBgDirtyAtMs >= 0) { _overlayBgDirtyAtMs = 0; TickOverlayBgSave(); }   // flush a background drag still settling
         BuffTrackPatch.Uninstall();
         CastPatch.Uninstall();

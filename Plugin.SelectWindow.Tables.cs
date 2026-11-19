@@ -89,10 +89,8 @@ public sealed partial class Plugin
             var values = tbl.GetType().GetProperty("Values", BindingFlags.Public | BindingFlags.Instance)
                              ?.GetValue(tbl) ?? tbl;
 
-            // Names come from the plugin's embedded English-translation JSON (same source the HUD tiles use),
-            // so load it once before the enumeration loop.
-            TranslatedBuffText.EnsureLoaded(_services.Log.Info);
-
+            // Names come from the framework's English game-text table (Plugin.GameText.cs — same source the HUD tiles
+            // use). If it isn't ready yet the game names are used, and its Ready event reloads this table once.
             // Group by resolved display Name (exact match, first-seen order); variants collapse, distinct names stay.
             var dGroups = new BuffGroupAccumulator();
             var bGroups = new BuffGroupAccumulator();
@@ -131,11 +129,11 @@ public sealed partial class Plugin
                 }
                 string desc = (string?)(piDesc?.GetValue(row)) ?? "";
                 // Display name priority (mirrors the HUD's ResolveEffectName, including the manual override dict):
-                // EffectOverrides → English-translation JSON → game Name → "#<id>". This resolved label is BOTH the
+                // EffectOverrides → English game text → game Name → "#<id>". This resolved label is BOTH the
                 // row label and the grouping key, so same-name variants collapse into one row.
                 string name;
                 if (EffectOverrides.TryGetValue(id, out var ov) && !string.IsNullOrEmpty(ov.Name))     name = ov.Name;
-                else if (TranslatedBuffText.TryGet(id, out var tn, out _) && !string.IsNullOrEmpty(tn)) name = tn;
+                else if (GameTextName(id) is { Length: > 0 } tn)                                       name = tn;
                 else if (!string.IsNullOrEmpty(gameName))                                              name = gameName;
                 else                                                                                   name = $"#{id}";
                 int buffType = (int)(piType?.GetValue(row) ?? -1);

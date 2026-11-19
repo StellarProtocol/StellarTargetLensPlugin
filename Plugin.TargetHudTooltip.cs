@@ -75,15 +75,15 @@ public sealed partial class Plugin
         }
         var r = list[idx];
         var info = _services.GameData.Combat.GetBuff(r.BaseId);
-        TranslatedBuffText.EnsureLoaded(_services.Log.Info);
-        bool hasTr = TranslatedBuffText.TryGet(r.BaseId, out var trName, out var trDesc);
-        // Name priority: manual override (see EffectOverrides) → English-translated table → game data → tracker.
+        var trName = GameTextName(r.BaseId);
+        var trDesc = GameTextDescription(r.BaseId);
+        // Name priority: manual override (see EffectOverrides) → English game text (fw GameText) → game data → tracker.
         if (EffectOverrides.TryGetValue(r.BaseId, out var ov) && !string.IsNullOrEmpty(ov.Name)) _tipName = ov.Name;
-        else if (hasTr && !string.IsNullOrEmpty(trName)) _tipName = StripTags(trName);
+        else if (!string.IsNullOrEmpty(trName)) _tipName = StripTags(trName);
         else _tipName = StripTags(info?.Name);
         if (string.IsNullOrEmpty(_tipName)) _tipName = StripTags(r.Name);
-        // Description priority: English-translated table → game data.
-        _tipDesc = hasTr && !string.IsNullOrEmpty(trDesc) ? StripTags(trDesc) : StripTags(info?.Description);
+        // Description priority: English game text → game data.
+        _tipDesc = !string.IsNullOrEmpty(trDesc) ? StripTags(trDesc) : StripTags(info?.Description);
         _tipSource = string.IsNullOrEmpty(r.SkillName) ? "" : $"Source: {r.SkillName}";
         _tipTex      = GetHudEffectIcon(idx);   // reuse the tile icon (also refreshes _hudEffUv[idx])
         _tipUv       = _hudEffUv[idx];
