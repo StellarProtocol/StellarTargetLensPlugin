@@ -159,7 +159,7 @@ public sealed partial class Plugin
         // Shield: a striped cyan segment right after the HP fill, [hp, hp + shield] / max (same shield value as before).
         OverlayStart01 = () => TargetHudHpFraction(), Overlay01 = () => TargetHudShieldEndFraction(), OverlayInFront = true,
         OverlayColor = Hex(0x7ff0ff), OverlayStripeColor = Hex(0x3fc6e6), OverlayStripeWidth = 4f * Geo.Unit,
-        OverlayGlow = Hex(0x7ff0ff, 0.8f), GlowRadius = 6f * Geo.Unit,
+        // No OverlayGlow: the glow renders as a hard square cyan box around the band, at odds with the rounded bar.
     };
 
     private HudElement BuildFrameBreakBar(GradientStop[] gradient, bool glow) => new BarElement(() => TargetHudBreakFraction(), Hex(0xffffff))
@@ -212,13 +212,52 @@ public sealed partial class Plugin
     private int _distVal = -1; private string _distLbl = "";
     private int _breakVal = int.MinValue; private string? _breakTpl; private string _breakLbl = "";
 
-    private string TargetHudHpLabel()   // centre: "cur / max"
+    // Centre: "cur / max", plus the monster's shield in parentheses while it has one ("… / … (12,345,678)", as before
+    // the redesign). The shield comes from the same frame-cached read as the striped band (TryGetCurrentShield). Rebuilt
+    // only when HP, max, shield or the fit mode changes. Fit: centred, the label must clear the right-aligned percent on
+    // both sides; when the full digits wouldn't (a narrow Slim window), the numbers switch to compact "79.5M" form.
+    private long _hpLblShield = -1; private bool _hpLblCompact;
+    private string TargetHudHpLabel()
     {
         var s = Cur;
-        if (s.Hp == _hpLblCur && s.MaxHp == _hpLblMax) return _hpLbl;
-        _hpLblCur = s.Hp; _hpLblMax = s.MaxHp;
-        _hpLbl = s.MaxHp <= 0 ? (s.Hp > 0 ? s.Hp.ToString("N0") : "?") : $"{s.Hp:N0} / {s.MaxHp:N0}";
+        long shield = 0;
+        if (!ShowExample && _targetInfo.TryGetCurrentShield(out var sh, out _) && sh > 0) shield = sh;
+        bool compact = HpLabelNeedsCompact(s.Hp, s.MaxHp, shield);
+        if (s.Hp == _hpLblCur && s.MaxHp == _hpLblMax && shield == _hpLblShield && compact == _hpLblCompact) return _hpLbl;
+        _hpLblCur = s.Hp; _hpLblMax = s.MaxHp; _hpLblShield = shield; _hpLblCompact = compact;
+        string core = s.MaxHp <= 0 ? (s.Hp > 0 ? HpNum(s.Hp, compact) : "?") : HpNum(s.Hp, compact) + " / " + HpNum(s.MaxHp, compact);
+        _hpLbl = shield > 0 ? core + " (" + HpNum(shield, compact) + ")" : core;
         return _hpLbl;
+    }
+
+    // Full digits fit when half the label's width clears the percent column: bar width from the live window width
+    // (frame = window − chrome padding, HP interior = frame − HpL − HpR), bold digits ≈ 0.6 × font px wide. Pure maths.
+    private bool HpLabelNeedsCompact(long hp, long max, long shield)
+    {
+        var g = Geo;
+        float w = _targetHudWindow != null ? _targetHudWindow.Rect.Width : 0f;
+        if (w < 1f) w = g.DefaultW;
+        float bar = w - 2f * HudPad - g.HpL - g.HpR;
+        float glyph = 0.6f * g.HpFs, inset = 8f * g.Unit;
+        float pct = 4f * glyph + inset + 6f;                               // "100%" + its inset + a small gap
+        int chars = DigitsWithCommas(hp) + (max > 0 ? 3 + DigitsWithCommas(max) : 0) + (shield > 0 ? 3 + DigitsWithCommas(shield) : 0);
+        return chars * glyph / 2f > bar / 2f - pct;
+    }
+
+    private static int DigitsWithCommas(long v)
+    {
+        int d = 1;
+        for (long x = System.Math.Abs(v); x >= 10; x /= 10) d++;
+        return d + (d - 1) / 3;
+    }
+
+    private static string HpNum(long v, bool compact)
+    {
+        if (!compact) return v.ToString("N0");
+        if (v >= 1_000_000_000) return (v / 1e9).ToString("0.#") + "B";
+        if (v >= 1_000_000)     return (v / 1e6).ToString("0.#") + "M";
+        if (v >= 10_000)        return (v / 1e3).ToString("0.#") + "K";
+        return v.ToString("N0");
     }
 
     private string TargetHudHpPct()     // right: percent
