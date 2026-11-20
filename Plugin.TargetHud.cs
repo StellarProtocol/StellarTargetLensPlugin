@@ -162,9 +162,19 @@ public sealed partial class Plugin
 
     // ── Header / portrait / HP / distance ──────────────────────────────────────
 
-    // Best-effort head portrait. Returns null → the frame's portrait ring stays empty, the rest renders fine.
+    // Best-effort head portrait. Returns null → the generic silhouette shows in the disc instead (ShowPortraitPlaceholder).
+    // The result is remembered so the placeholder layer's Visible check costs nothing (no second icon lookup); it reads
+    // the previous apply's result, i.e. at most one ~10 Hz refresh behind — the portrait load is async anyway.
+    private bool _hasPortrait;
     private object? GetMonsterPortrait()
-        => _monIcon.GetIcon((int)Cur.ConfigId, out _portraitUv);
+    {
+        var icon = _monIcon.GetIcon((int)Cur.ConfigId, out _portraitUv);
+        _hasPortrait = icon != null;
+        return icon;
+    }
+
+    // Silhouette only for a real target without a portrait; the layout-edit example boss keeps its empty disc.
+    private bool ShowPortraitPlaceholder() => !_hasPortrait && !ShowExample;
 
     // Name only — the rank is shown on the badge. Level is intentionally omitted (AttrLevel never populates for monsters).
     private string TargetHudNameLine()

@@ -16,6 +16,8 @@ namespace Stellar.TargetLens;
 //   LayerStack   base = a frame-height strut (the stack is as wide as the window content)
 //     ├─ portrait disc  deep royal-blue radial backing (Resources/portrait-disc-<px>.png) — portraits with a transparent
 //     │                 background would otherwise show the scene through the medallion
+//     ├─ placeholder    generic monster silhouette (Resources/portrait-placeholder-<px>.png) — only while the target has
+//     │                 no game portrait (the example boss in layout edit excepted: it keeps its empty disc)
 //     ├─ portrait       the monster's game portrait, circle — UNDER the frame (the art's socket is transparent)
 //     ├─ frame art      framework 3-slice: left cap + middle (stretched) + right cap
 //     ├─ badge art      gold = BOSS, orange = ELITE, + its text
@@ -101,9 +103,11 @@ public sealed partial class Plugin
         var portRect = new LayerRect { Left = g.PortX, Top = g.PortY, Width = g.PortD, Height = g.PortD };
         int d = (int)g.PortD;
         var discFile = "portrait-disc-" + d + ".png";
+        var placeholderFile = "portrait-placeholder-" + d + ".png";   // pre-drawn per disc size (tools/gen_portrait_placeholder.py)
         return new LayerStackElement(
             new SpacerElement(Height: g.H),
             At(new ImageElement(() => CachedPng(discFile), d, d) { Crisp = true }, portRect),
+            At(new ImageElement(() => CachedPng(placeholderFile), d, d) { Crisp = true }, portRect, ShowPortraitPlaceholder),
             At(new GameTextureElement(() => GetMonsterPortrait(), d, d, () => _portraitUv) { CornerRadius = d / 2 }, portRect),
             new StackLayer(new SlicedImageElement(Art("left"), Art("mid"), Art("right"), (int)g.H)),
             // Rank badge: art + text (BOSS / ELITE). Normal monsters: no badge, and the name moves left.

@@ -41,6 +41,8 @@
          @1.5x (Medium) and @1x (Slim); portrait-disc-<px>: the blue backing disc under the portrait (tools/gen_portrait_disc.py, Pillow, 8x supersampled). -->
     <EmbeddedResource Include="Resources/celestial_crest_*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Resources/portrait-disc-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- portrait-placeholder-<px>: generic monster silhouette in the disc when a target has no portrait (tools/gen_portrait_placeholder.py). -->
+    <EmbeddedResource Include="Resources/portrait-placeholder-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <!-- Crest overlay glyphs (diamond, hairline, rank medallions, BOSS/ELITE pills), pre-drawn per row size by tools/gen_crest_icons.py. -->
     <EmbeddedResource Include="Resources/crest-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
