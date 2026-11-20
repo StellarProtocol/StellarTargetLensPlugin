@@ -140,8 +140,16 @@ public sealed partial class Plugin
                 new CellElement(CrestBarRings(BarVariants(barH, (debuffBar, () => BuffListIsDebuff(idx)), (buffBar, () => !BuffListIsDebuff(idx))), sc),
                     Weight: 1f),
             }, Gap: 6f * sc);
+            // Left-click a row → the effect description pop-up beside it (issue #11; Plugin.TargetHudTooltip.cs). Same
+            // wrapper as the Nearby rows: Bare (no tint), and the window is NOT Passive, so uGUI already routes the click
+            // to the row — no extra hit-test. The real work is in OnClickWithRect (needs the row's rect to place the tip).
+            var clickable = new SelectableElement(row, OnClick: () => { })
+            {
+                Bare = true,
+                OnClickWithRect = r => OnBuffListRowClick(idx, r),
+            };
             // Prebuild: built in the background even while no row is live (the window pre-build's fill has no target).
-            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
+            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), clickable) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
         }
         // Content-hugging plate; with no effects nothing draws at all (the window keeps its rect).
         return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvEffects, () => _showEffectTitle, () => BuffListShownRows(),
@@ -151,4 +159,16 @@ public sealed partial class Plugin
     // Window height that isn't rows: chrome padding + the plate padding + the caption block.
     private const float BuffListFixedH = 2f * ChromePad + 2f * PlatePadY + CaptionReserve;
     private int BuffListShownRows() => System.Math.Min(BuffListVisibleRows(), ListEffects().Count);
+
+    // Row click → resolve the slot to its effect NOW, in the list's own order (debuffs first, then buffs, filters
+    // applied — ListEffects), and hand the tooltip the row object itself, not an index: the tracker's All order differs
+    // from the list order, and a re-sort between clicks must not open a neighbour. Ignored in layout-edit mode (the
+    // rows are example data there and a press means drag; SelectableElement doesn't check edit mode itself).
+    private void OnBuffListRowClick(int idx, WindowRect rowPx)
+    {
+        if (_services.Windows.IsLayoutEditing || ShowExample) return;
+        var list = ListEffects();
+        if (idx >= list.Count) return;
+        OnTargetEffectClick(list[idx], rowPx);
+    }
 }
