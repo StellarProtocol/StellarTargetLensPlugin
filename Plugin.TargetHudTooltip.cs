@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Stellar.TargetLens;
 
-// Click-to-tooltip for the Target HUD's combined buff/debuff tiles. Left-clicking a tile pops a
+// Click-to-tooltip for a target effect. Left-clicking one (formerly a Target HUD Classic tile) pops a
 // context-menu-style panel (PanelElement — themed background + 1px border) showing the effect icon, name,
 // description, and source skill. Mirrors the CooldownBar plugin's tile tooltip (Plugin.Tooltip.cs):
 // a separate Borderless DismissOnOutsideClick window whose cursor position is re-asserted each frame after
@@ -63,7 +63,8 @@ public sealed partial class Plugin
         _windows.Add(_targetTip);   // Dispose already loops _windows and Remove()s each
     }
 
-    // Called when an effect tile is left-clicked (wired in BuildTargetHudEffectTiles).
+    // Opens the tooltip for tracker effect `idx` (_targetBuff.All order). Its only caller was the removed Classic effect
+    // tiles; kept (approved scope) so a click on a Target Effects row can reuse it.
     internal void OnTargetEffectClick(int idx)
     {
         _targetBuff.Ensure();

@@ -59,7 +59,7 @@ public sealed partial class Plugin : IStellarPlugin
         RegisterTargetHudTooltip();   // click-to-info tooltip for the HUD's buff/debuff tiles
         LoadOverlayBg();              // per-overlay background opacity for the five Crest overlays (Plugin.Crest.cs)
         RegisterThreatWindow();       // standalone auto-showing threat/aggro window (its own gated HUD overlay)
-        RegisterBuffListWindow();     // standalone "List" buff/debuff style window (alternative to the classic tiles)
+        RegisterBuffListWindow();     // standalone Target Effects (buff/debuff) window
         RegisterBossTimerWindow();    // standalone boss skill-timer list (our replica of the game's native DBM list)
         RegisterCastBarWindow();      // standalone boss cast/chanting bar overlay (auto-shows only while a boss channels)
         RegisterNearbyWindow();       // standalone nearby-monster list (name + HP bar + distance, auto-shows near monsters)

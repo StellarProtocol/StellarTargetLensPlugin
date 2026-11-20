@@ -5,26 +5,25 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 // Data layer for the "List" buff/debuff STYLE — the standalone Target Effects window (Plugin.BuffListWindow.cs).
-// Owns the buff-display-style config field, its OWN icon-UV pool (separate from the Target HUD tile pool so the two
-// styles can be mounted at once without stomping each other's atlas rects), and the per-row getters the window's
-// rows bind to. Reuses the Target HUD's effect resolution (CurEffects / ResolveEffectName) so the per-source
-// (mine/others/monster) and ShowHidden filters and the layout-edit example data apply to the list automatically — the shared icon-priority
-// logic is extracted here as ResolveEffectIcon and called by BOTH the classic tiles and this list.
+// Owns the buff-display-style config field, its OWN icon-UV pool, and the per-row getters the window's rows bind to.
+// Reuses the Target HUD's effect source (CurEffects) so the per-source (mine/others/monster) and ShowHidden filters and
+// the layout-edit example data apply to the list automatically. The shared name / icon resolution (ResolveEffectName,
+// ResolveEffectIcon) lives here too; the effect tooltip and the Select Effects picker use the same priorities.
 public sealed partial class Plugin
 {
-    // Buff/debuff display style: 0 = Classic (tiles inside the Target HUD), 1 = List (this window, the default),
-    // 2 = Off (no buff/debuff display at all — neither tiles nor the list window).
+    // Buff/debuff display style ("buff_style"): 1 = List (this window, the default), 2 = Off (no buff/debuff display).
+    // 0 was "Classic" (tiles inside the Target HUD) — removed 2026-11-20; a saved 0 loads as List (RegisterBuffListWindow).
     // Loaded in RegisterBuffListWindow (mirrors how _showThreat is loaded in RegisterThreatWindow).
     private int _buffStyle = 1;
 
-    // Target Effects LIST row-size multiplier (List style ONLY; Classic tiles ignore it). Scales the row's icon px,
+    // Target Effects LIST row-size multiplier. Scales the row's icon px,
     // icon cell width, bar height, label font, and the row stride together so the list grows coherently. Loaded in
     // RegisterBuffListWindow alongside _buffStyle; changed live via SetListScale, which rebuilds the window Root
     // because the element sizes are baked at build time. Default 1.0 = unchanged.
     private float _listScale = 1f;
 
     private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)
-    private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
+    private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — the tooltip keeps its own _tipUv
     // Crest bar (20) + row gap (3) at scale 1; one row's vertical footprint. Scaled by _listScale so the height-driven
     // row count stays correct as rows grow — BuffListVisibleRows floors the window height by this stride.
     private float BuffRowStride => 23f * _listScale;
@@ -41,8 +40,8 @@ public sealed partial class Plugin
         501706, 501710, 501712, 501714, 851388, 880803, 881613, 974342, 995191, 2100106,
     };
 
-    // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
-    // (GetBuffListIcon). The source-skill icon swap is meaningful ONLY for a PLAYER-applied effect — for those we
+    // Shared icon-priority resolution used by the list rows (GetBuffListIcon), the effect tooltip and the Select
+    // Effects rows (all via EffectIcon, Plugin.EffectPlaceholder.cs). The source-skill icon swap is meaningful ONLY for a PLAYER-applied effect — for those we
     // want the applying class-skill's art (e.g. "your Firestorm" shows your skill icon). A boss's OWN buff (source =
     // the current target monster) or an effect with an UNKNOWN source (no caster) has no meaningful player skill to
     // swap to, so its own table icon is the correct art. Order:
@@ -52,6 +51,14 @@ public sealed partial class Plugin
     //   4. fallback → the buff's own icon.
     // LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
     // GetImagineForSkill); fall through on null so an effect whose skill icon doesn't load still shows its buff icon.
+    // Display-name priority: manual override → English game text (fw GameText) → tracker's live (Chinese) name.
+    private string ResolveEffectName(TargetBuffRow r)
+    {
+        if (EffectOverrides.TryGetValue(r.BaseId, out var ov) && !string.IsNullOrEmpty(ov.Name)) return ov.Name;
+        if (GameTextName(r.BaseId) is { Length: > 0 } tn) return tn;
+        return r.Name ?? "";
+    }
+
     private object? ResolveEffectIcon(TargetBuffRow r, out UvRect uv)
     {
         uv = default;
@@ -139,8 +146,8 @@ public sealed partial class Plugin
         return EffectIcon(list[idx], 20f * _listScale, out _buffListUv[idx]);   // icon-less → placeholder inside the ring
     }
 
-    // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast). SAME predicate as
-    // the classic tiles' HudEffectIsMine — FireUuid matches the local entity id (guarded; local==0 → false).
+    // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast) — FireUuid matches the
+    // local entity id (guarded; local==0 → false).
     private bool BuffListIsMine(int idx)
     {
         var list = ListEffects();

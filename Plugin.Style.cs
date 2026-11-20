@@ -166,8 +166,8 @@ public sealed partial class Plugin
         };
     }
 
-    private HudElement NeutralButton(Func<string> label, Action onClick, float width) =>
-        PillButton(label, NeutralFill, NeutralText, onClick, width);
+    private HudElement NeutralButton(Func<string> label, Action onClick, float width, Func<bool>? enabled = null) =>
+        PillButton(label, NeutralFill, NeutralText, onClick, width, enabled);
 
     private HudElement CautionButton(Func<string> label, Action onClick, float width, Func<bool>? enabled = null) =>
         PillButton(label, CautionFill, CautionText, onClick, width, enabled);

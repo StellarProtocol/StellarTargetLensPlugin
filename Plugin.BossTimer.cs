@@ -45,8 +45,7 @@ public sealed partial class Plugin
     }
 
     // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned MM:SS.
-    // The window is width-resizable, so the char budget scales with the current width (mirrors EffTilesPerLine's
-    // width-aware pattern) — drag wider to reveal more of a long skill name.
+    // The window is width-resizable, so the char budget scales with the current width (width-aware) — drag wider to reveal more of a long skill name.
     private string BossTimerName(int idx)
     {
         var list = BossTimerRows();

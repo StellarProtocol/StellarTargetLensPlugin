@@ -3,7 +3,7 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.TargetLens;
 
-// Standalone "List" buff/debuff STYLE window — an alternative to the classic tile grid inside the Target HUD.
+// Standalone Target Effects window — the plugin's one buff/debuff display (the in-HUD "Classic" tiles were removed).
 // One row per active effect: [mini icon] [ time-bar: <name> ....... <time> ]. The bar's FILL is the remaining-time
 // fraction; the name sits inside-left (ellipsised) and the compact remaining time inside-right, exactly like the
 // Target HUD's HP bar (main label + SecondaryLabel, both LabelInside). Mirrors the threat window (Plugin.ThreatWindow.cs):
@@ -11,8 +11,8 @@ namespace Stellar.TargetLens;
 // placed without a live target. Row getters + the height-driven row count live in Plugin.BuffList.cs.
 //
 // Height-resizable: MORE height = MORE visible rows (BuffListVisibleRows() floors the drag-set height by the row
-// stride). Width-resizable too so long names have room. The two styles are mutually exclusive — this window only
-// renders while buff_style == 1 (List); in Classic mode it stays hidden and the Target HUD shows its tiles.
+// stride). Width-resizable too so long names have room. It renders while buff_style == 1 (Buffs / Debuffs on);
+// buff_style == 2 (off) keeps it hidden.
 public sealed partial class Plugin
 {
     private IWindowControl _buffListWindow = null!;   // registered in the ctor; auto-shows on target while in List style
@@ -23,9 +23,17 @@ public sealed partial class Plugin
 
     private void RegisterBuffListWindow()
     {
-        // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = List default).
+        // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = on, the default;
+        // 2 = off). A saved 0 is the removed "Classic" tiles mode → migrate it to the List window, persisted once.
+        // Anything else unknown also lands on 1 (on) so a stray value can't leave the effects silently missing.
         _buffStyle = _cfg.Get<int>("buff_style", 1);
-        // Row-size multiplier (List only). Baked into the element sizes below, so a live change re-registers the
+        if (_buffStyle != 1 && _buffStyle != 2)
+        {
+            _buffStyle = 1;
+            _cfg.Set<int>("buff_style", 1);
+            _cfg.Save();
+        }
+        // Row-size multiplier. Baked into the element sizes below, so a live change re-registers the
         // window (SetListScale → RebuildBuffListWindow). Clamped to the slider band so a stray config can't break layout.
         _listScale = System.Math.Clamp(_cfg.Get<float>("list_scale", 1f), 1f, 2.5f);
         // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
@@ -64,7 +72,7 @@ public sealed partial class Plugin
                 // 3..16-row band so it can neither hide the title nor exceed the fixed slot pool.
                 Resizable = true, MinWidth = winW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: mirrors the Target HUD gate (in-world, no menu/loading/blocking overlay, live target),
-                // plus the List style selected. With no effects the window stays mounted but draws nothing (its plate hugs
+                // plus Buffs / Debuffs switched on. With no effects the window stays mounted but draws nothing (its plate hugs
                 // the rows). Layout-edit mode overrides so it can be placed against its example rows.
                 ShouldRender = () => _services.Windows.IsLayoutEditing
                                   || (_services.ClientState.Phase == GamePhase.World
@@ -83,7 +91,7 @@ public sealed partial class Plugin
             OnClose: () => { }));
         _windows.Add(_buffListWindow);   // Dispose already loops _windows and Remove()s each
 
-        // Initial visibility from the persisted style (the settings dropdown flips it live via SetVisible).
+        // Initial visibility from the persisted style (the settings header chip flips it live via SetVisible).
         _buffListWindow.SetVisible(_buffStyle == 1);
     }
 
@@ -95,7 +103,7 @@ public sealed partial class Plugin
     //
     // We deliberately do NOT capture and restore IsShown. IsShown is "visible AND currently mounted", so at a rebuild
     // moment with no live target it reads false — restoring that would SetVisible(false) and leave the window OFF even
-    // after a target appears. This window's session-visibility is purely the List style, which RegisterBuffListWindow
+    // after a target appears. This window's session-visibility is purely buff_style, which RegisterBuffListWindow
     // already sets (SetVisible(_buffStyle == 1)); the ShouldRender gate re-shows it whenever a target is live.
     private void RebuildBuffListWindow()
     {

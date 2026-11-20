@@ -11,8 +11,9 @@ namespace Stellar.TargetLens;
 //
 // 2026-11-18 redesign (user-approved "Resonance Glass", _scratch/prototypes/targetlens-bossbar-APPROVED.md): a
 // fixed-colour 3-slice frame art at 2× (150 px tall) with the portrait, rank badge, name, distance, HP bar and break
-// gauge placed into the art's slots — layout in Plugin.TargetHud.Frame.cs. Classic effects mode puts the effect tiles
-// in a row under the frame (Plugin.TargetHud.Effects.cs).
+// gauge placed into the art's slots — layout in Plugin.TargetHud.Frame.cs. The target's effects are NOT drawn here:
+// the standalone Target Effects window shows them (Plugin.BuffListWindow.cs; the in-HUD "Classic" tiles were removed
+// 2026-11-20).
 //
 // v2.0.0 note: WindowSpec has NO HideUntilInWorld / AutoHideBehindGameMenus flags (they existed in v1.5.1).
 // Both are omitted; the ShouldRender predicate below already gates to Phase==World and not-Loading.
@@ -24,18 +25,9 @@ public sealed partial class Plugin
     private MonsterIconLoader _monIcon = null!;        // head-portrait loader (guarded; null icon on any failure)
     private UvRect            _portraitUv;             // atlas sub-rect for the current portrait
 
-    private const int HudBuffSlots = 12;               // combined buff+debuff row pool
-    private readonly UvRect[] _hudEffUv = new UvRect[HudBuffSlots];
-
-    private static readonly ColorRgba EffectBarColor = new(0.45f, 0.55f, 0.70f, 1f); // neutral out-of-range tile accent
-
     // Local break-gauge fill tween — the raw attr snaps back to full after the recovery window; this reproduces
     // the game HUD's smooth 0→full refill over the monster's BreakingContinueTime.
     private readonly BreakGauge _breakGauge = new();
-
-    // CooldownTile accents: debuff = red/orange, buff = green.
-    private static readonly ColorRgba DebuffAccent = new(0.90f, 0.40f, 0.25f, 1f);
-    private static readonly ColorRgba BuffAccent   = new(0.35f, 0.75f, 0.45f, 1f);
 
     // Manual per-effect overrides for buffs the game data resolves poorly (unnamed / no icon).
     // baseId → (display name for the tooltip, imagine skill id whose icon to draw). IconSkill 3948 =
@@ -71,13 +63,8 @@ public sealed partial class Plugin
         // below (MinHeight==MaxHeight) — width stays resizable, height cannot be dragged.
         //
         // The height is engine-locked for a Resizable window (MinHeight==MaxHeight can't change at runtime — see
-        // WindowBuilder-Patterns.md), so it's chosen at registration from the PERSISTED buff style + bar size (a bar
-        // size change re-registers the window: SetHudBarSize). Read straight from _cfg (not _buffStyle) so it
-        // doesn't depend on which partial's ctor sets that field first.
-        //   List (1) / Off (2): 12 pad + frame (Slim 88 / Medium 132 / Large 176) + 12 pad = 112 / 156 / 200.
-        //   Classic (0): + 8 column gap + the effect-tile row (44 icon + 2 + ~16 seconds caption ≈ 62) + 4 slack for
-        //                font metrics → 186 / 230 / 274.
-        // A live style toggle re-fits this height only on the next reload/relog (accepted; no live height resize).
+        // WindowBuilder-Patterns.md), so it's chosen at registration from the bar size (a bar size change re-registers
+        // the window: SetHudBarSize): 12 pad + frame (Slim 88 / Medium 132 / Large 176) + 12 pad = 112 / 156 / 200.
         float HudH = HudLockedH();
         // Default position = the user-approved layout (2026-11-19): horizontally CENTRED (WindowAnchor.Top, X offset 0 —
         // the framework centres the window's own width, so every bar size lands centred), top y = 15. A user's own
@@ -115,7 +102,7 @@ public sealed partial class Plugin
     }
 
     private float HudMinW() => FrameCapsW + Geo.MidMin + 2f * HudPad;
-    private float HudLockedH() => FrameH + 2f * HudPad + (_cfg.Get<int>("buff_style", 1) == 0 ? 74f : 0f);
+    private float HudLockedH() => FrameH + 2f * HudPad;
 
     // Settings → Target HUD → Boss bar size (Slim / Medium / Large). Sizes, art, the locked height and the width floor are all
     // baked at build, so a change re-registers the window — the framework-sanctioned Remove()+Register() (mirrors
@@ -134,14 +121,8 @@ public sealed partial class Plugin
         _targetHudWindow.SetRect(new WindowRect(rect.X, rect.Y, System.Math.Max(rect.Width, HudMinW()), HudLockedH()));
     }
 
-    // The boss-bar frame (Plugin.TargetHud.Frame.cs), then — Classic style only (buff_style == 0) — one row of
-    // CooldownBar-style effect tiles under it. In List style the standalone Target Effects window renders them instead
-    // (Plugin.BuffListWindow.cs), so the row collapses away. Gap 8 (a 0 gap means "default section gap" here).
-    private HudElement BuildTargetHudRoot() => new ColumnElement(new HudElement[]
-        {
-            BuildTargetHudFrame(),
-            new ConditionalElement(() => _buffStyle == 0, BuildTargetHudEffectTiles()),
-        }, Gap: 8f);
+    // The boss-bar frame alone (Plugin.TargetHud.Frame.cs); effects live in the Target Effects window.
+    private HudElement BuildTargetHudRoot() => BuildTargetHudFrame();
 
     // ── Layout-edit example data ────────────────────────────────────────────────
     // While the layout editor (Shift+`) is active and no monster is locked, feed the getters representative
@@ -154,7 +135,7 @@ public sealed partial class Plugin
         stunned: 350, maxStunned: 500, level: 90, rank: "Boss", configId: 0,
         hasDistance: true, distance: 35f);
 
-    // Three tiles that exercise every icon path: a real buff-table icon, an override (Reliance ★), a letter fallback.
+    // Three effects that exercise every icon path: a real buff-table icon, an override (Reliance ★), a letter fallback.
     private static readonly TargetBuffRow[] ExampleEffects =
     {
         new() { BaseId = 2110137, Name = "Void Corruption Power", Duration = 20000, SnapRemain = 14f, BuffType = 1, Layer = 3 },

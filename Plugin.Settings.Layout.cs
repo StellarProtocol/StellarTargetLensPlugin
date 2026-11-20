@@ -6,7 +6,8 @@ namespace Stellar.TargetLens;
 
 // Settings window body, house style — the approved prototype's "PROPOSED" block (targetlens-settings.html):
 //   ToolHeader: [40 px accent tile, white crosshair] [bold "Target Lens" / muted "N of 6 overlays on"]
-//   left column : TARGET HUD (header chip only) · BUFFS / DEBUFFS (Display chips, Show title, Size, SHOW filters, Select)
+//   left column : TARGET HUD (header chip + bar size) · BUFFS / DEBUFFS (header chip, Show title, Size, opacity, SHOW filters,
+//                 Select)
 //   right column: THREAT / AGGRO · CAST BAR · BOSS SKILL TIMERS · NEARBY MONSTERS (each: header On/Off chip + rows)
 // Every side effect is the one the old checkbox window had (same config keys, same SetVisible calls, same debounced
 // scale setters) — only the controls changed. Built ONCE; every Func re-pulls live state on the capped refresh.
@@ -61,63 +62,58 @@ public sealed partial class Plugin
             }),
         });
 
-    // BUFFS / DEBUFFS. No header chip: the Display choice (Classic / List / Off) is the on/off. "Show title" and "Size"
-    // only apply to the List window, so they are RECESSED (not hidden) unless Display = List. The SHOW filters and the
-    // effect picker apply to both Classic and List and stay live.
+    // BUFFS / DEBUFFS: header On/Off chip like the right-column sections (on = the Target Effects window, buff_style 1;
+    // off = no effect display, 2). Live: SetBuffsOn flips the window's visibility. While off, EVERY row is recessed
+    // (values kept), the SHOW filters and the effect picker included.
     private HudElement BuildBuffsSection()
     {
-        Func<bool> listMode = () => _buffStyle == 1;
-        return SectionPanel(() => _loc.T("tl.section.buffs"), () => _loc.T("tl.hint.buffs"), null, new HudElement[]
+        Func<bool> on = () => _buffStyle == 1;
+        return SectionPanel(() => _loc.T("tl.section.buffs"), () => SectionOffHint(_buffStyle == 1),
+            OnOffChip(on, SetBuffsOn), new HudElement[]
         {
-            ChoiceRow("tl.row.display", "tl.help.buffDisplay", "tl.section.buffs", new HudElement[]
-            {
-                ChoiceChip("tl.choice.classic", () => _buffStyle == 0, () => SetBuffStyle(0), BuffClassicChipW),
-                ChoiceChip("tl.choice.list",    () => _buffStyle == 1, () => SetBuffStyle(1), ListChipW),
-                ChoiceChip("tl.choice.off",     () => _buffStyle == 2, () => SetBuffStyle(2), OffChoiceChipW),
-            }),
             // "Show title" — the List window's header row. Live via the title's ConditionalElement (no window rebuild).
             ChipRow("tl.row.showTitle", "tl.help.buffTitle", "tl.section.buffs", () => _showEffectTitle, v =>
             {
                 _showEffectTitle = v;
                 _cfg.Set<bool>("show_effect_title", v);
                 _cfg.Save();
-            }, listMode),
-            // List-mode row size (1.0–2.5x): the drag only stashes the value + readout; the buff-list window is rebuilt
+            }, on),
+            // Row size (1.0–2.5x): the drag only stashes the value + readout; the buff-list window is rebuilt
             // ONCE after the slider settles (SetListScale → TickListScaleRebuild), so a live drag never tears it down.
-            SliderRow("tl.row.size", "tl.help.buffSize", "tl.section.buffs", () => _listScale, SetListScale, listMode),
+            SliderRow("tl.row.size", "tl.help.buffSize", "tl.section.buffs", () => _listScale, SetListScale, on),
             // The List window's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
-            PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.buffs", () => _overlayBg[OvEffects], SetOverlayBg(OvEffects), listMode),
-            SubCaption("tl.sub.show"),
+            PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.buffs", () => _overlayBg[OvEffects], SetOverlayBg(OvEffects), on),
+            SubCaption("tl.sub.show", on),
             ChipRow("tl.row.byMe", "tl.help.byMe", "tl.section.buffs", () => _showMine, v =>
             {
                 _showMine = v;
                 _targetBuff.ShowMine = v;
                 _cfg.Set<bool>("show_mine", v);
                 _cfg.Save();
-            }),
+            }, on),
             ChipRow("tl.row.byOthers", "tl.help.byOthers", "tl.section.buffs", () => _showOthers, v =>
             {
                 _showOthers = v;
                 _targetBuff.ShowOthers = v;
                 _cfg.Set<bool>("show_others", v);
                 _cfg.Save();
-            }),
+            }, on),
             ChipRow("tl.row.monster", "tl.help.monster", "tl.section.buffs", () => _showMonster, v =>
             {
                 _showMonster = v;
                 _targetBuff.ShowMonster = v;
                 _cfg.Set<bool>("show_monster", v);
                 _cfg.Save();
-            }),
-            ChipRow("tl.row.hidden", "tl.help.hidden", "tl.section.buffs", () => _showHidden, SetShowHidden),
+            }, on),
+            ChipRow("tl.row.hidden", "tl.help.hidden", "tl.section.buffs", () => _showHidden, SetShowHidden, on),
             ChipRow("tl.row.hidePermanent", "tl.help.hidePermanent", "tl.section.buffs", () => _hidePermanent, v =>
             {
                 _hidePermanent = v;
                 _targetBuff.HidePermanent = v;
                 _cfg.Set<bool>("hide_permanent", v);
                 _cfg.Save();
-            }),
-            SelectEffectsRow(),
+            }, on),
+            SelectEffectsRow(on),
         });
     }
 

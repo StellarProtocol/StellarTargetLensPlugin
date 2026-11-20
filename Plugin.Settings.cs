@@ -10,7 +10,7 @@ namespace Stellar.TargetLens;
 /// ToolHeader (accent crosshair tile + "N of 6 overlays on") → two balanced columns of section panels (left: TARGET
 /// HUD, BUFFS / DEBUFFS; right: THREAT / AGGRO, CAST BAR, BOSS SKILL TIMERS, NEARBY MONSTERS). Every setting row ends in
 /// a round "?" (help popover). Nothing is ever hidden: a row that doesn't apply right now (its section is off, or a
-/// List-only buff option in Classic/Off) is RECESSED (rule 22) and keeps its value, so the window height never changes.
+/// switched off) is RECESSED (rule 22) and keeps its value, so the window height never changes.
 /// Layout: Plugin.Settings.Layout.cs; row builders + header status: Plugin.Settings.Rows.cs; help popover:
 /// Plugin.Settings.Help.cs; open + centring (this window and the effect picker): Plugin.Settings.Open.cs; colours /
 /// components: Plugin.Style*.cs. The setters below (and the per-window scale setters) are unchanged by the redesign.
@@ -81,24 +81,22 @@ public sealed partial class Plugin
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World });
     }
 
-    // Buff/debuff display style selector (0 = Classic tiles in the Target HUD, 1 = List window, 2 = Off = no display).
-    // Persists and takes effect LIVE: flip the List window's visibility straight away; the Target HUD's classic tile
-    // grid reacts on its own via a ConditionalElement on _buffStyle==0 (see Plugin.TargetHud.cs), so switching updates
-    // both sides at once. Off (2) hides both — the tile grid (==0 gate) and the List window (SetVisible only on ==1).
-    private void SetBuffStyle(int style)
+    // Buffs / Debuffs header On/Off chip. Kept on the old "buff_style" key (1 = List window on, 2 = off) so existing
+    // configs carry over. Persists and takes effect LIVE: flip the Target Effects window's visibility straight away.
+    private void SetBuffsOn(bool on)
     {
-        _buffStyle = style;
-        _cfg.Set<int>("buff_style", style);
+        _buffStyle = on ? 1 : 2;
+        _cfg.Set<int>("buff_style", _buffStyle);
         _cfg.Save();
-        _buffListWindow.SetVisible(style == 1);   // List → show the window; Classic/Off → hide it
+        _buffListWindow.SetVisible(on);
     }
 
-    // Target Effects LIST row-size multiplier (List style only). The element sizes (icon, cell width, bar height,
+    // Target Effects LIST row-size multiplier. The element sizes (icon, cell width, bar height,
     // font, row stride) are baked into the window Root at build time, so applying a new scale needs a window rebuild
     // (RebuildBuffListWindow) — but SliderElement has no release callback, so a drag calls this many times/sec.
     // Rebuilding per tick tore the window down for the whole drag. Instead: update _listScale live so the knob + "x"
     // readout track the finger, then (re)arm a debounce timestamp; the deferred TickListScaleRebuild does the single
-    // persist + rebuild once the drag settles (≈ on release). Classic tiles are untouched.
+    // persist + rebuild once the drag settles (≈ on release).
     private void SetListScale(float v)
     {
         _listScale = v;                                // live value → the slider knob + readout track the drag

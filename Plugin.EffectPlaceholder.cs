@@ -5,7 +5,7 @@ namespace Stellar.TargetLens;
 
 // Placeholder art for an effect with no icon of its own (framework 2.34.0, the tiles CombatMeter 3.0 draws): a white
 // category glyph (IGameText.GetEffectCategory) on a green (buff) / red (debuff) tile, from IGameAssets.LoadEffectPlaceholder.
-// Used by every EFFECT icon — classic tiles, Effects List rows, the effect tooltip and the Select Effects rows — once the
+// Used by every EFFECT icon — Effects List rows, the effect tooltip and the Select Effects rows — once the
 // real chain (override → imagine / skill → buff icon) comes back null. Boss skill timers and the cast bar are skills
 // and keep their own icons.
 //

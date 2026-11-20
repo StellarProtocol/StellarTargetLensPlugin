@@ -14,10 +14,8 @@ public sealed partial class Plugin
     private const float SettingsRowH     = 28f;   // every setting row (the prototype's min-height 28)
     private const float SettingsRowGap   = 6f;    // between a row's label / control / "?"
     // Choice-chip widths = the longest label of that choice in ANY locale (bold 13) + padding (house rule 10):
-    // Classic: ja "クラシック" ≈ 65; List: fil "Listahan" ≈ 58; Off: id "Mati" / ja "オフ"; Top aggro: fil "Nangunguna" ≈ 80.
-    private const float BuffClassicChipW = 72f;
+    // List: fil "Listahan" ≈ 58; Top aggro: fil "Nangunguna" ≈ 80.
     private const float ListChipW        = 64f;
-    private const float OffChoiceChipW   = 48f;
     private const float BarSizeChipW     = 60f;   // Slim / Large (longest: id "Ramping" ≈ 52 at bold 13)
     private const float BarSizeMidChipW  = 84f;   // Medium (longest: fil "Katamtaman" ≈ 76 at bold 13)
     private const float TopAggroChipW    = 92f;
@@ -55,7 +53,7 @@ public sealed partial class Plugin
             OnOffChip(get, set, enabled),
             HelpDot(titleKey, helpKey, sectionKey));
 
-    // label … [choice chips] [?] — a segmented setting (Display: Classic / List / Off …).
+    // label … [choice chips] [?] — a segmented setting (Threat display: Top aggro / List …).
     private HudElement ChoiceRow(string labelKey, string helpKey, string sectionKey, HudElement[] chips,
         Func<bool>? enabled = null)
         => SettingRow(
@@ -106,7 +104,8 @@ public sealed partial class Plugin
     }
 
     // Small muted UPPERCASE sub-caption inside a panel ("SHOW"); re-uppercased only on a language change.
-    private HudElement SubCaption(string key)
+    // `enabled` (optional, polled): false = the section is off → the caption fades like a recessed row's label.
+    private HudElement SubCaption(string key, Func<bool>? enabled = null)
     {
         string? src = null, upper = string.Empty;
         string Text()
@@ -115,13 +114,16 @@ public sealed partial class Plugin
             if (!string.Equals(c, src, StringComparison.Ordinal)) { src = c; upper = c.ToUpperInvariant(); }
             return upper;
         }
-        return new TextElement(Text, Color: () => MutedText(), NoWrap: true, FontSize: 11) { Bold = true };
+        return new TextElement(Text, Color: () => On(enabled) ? MutedText() : DisabledLabel(PanelColor()), NoWrap: true,
+            FontSize: 11) { Bold = true };
     }
 
     // [Select effects…] + muted "Pick which ones appear". Opens the existing effect picker centred on this window.
-    private HudElement SelectEffectsRow() => SettingRow(
-        NeutralButton(() => _loc.T("tl.button.selectEffects"), OpenSelectEffects, SelectPillLabelW),   // .Open.cs
-        new CellElement(new TextElement(() => _loc.T("tl.desc.selectEffects"), Color: () => MutedText(), NoWrap: true)
+    // `enabled` false (section off) = recessed pill (click swallowed) + faded description.
+    private HudElement SelectEffectsRow(Func<bool>? enabled = null) => SettingRow(
+        NeutralButton(() => _loc.T("tl.button.selectEffects"), OpenSelectEffects, SelectPillLabelW, enabled),   // .Open.cs
+        new CellElement(new TextElement(() => _loc.T("tl.desc.selectEffects"),
+            Color: () => On(enabled) ? MutedText() : DisabledLabel(PanelColor()), NoWrap: true)
             { Ellipsize = true }, Weight: 1f));
 
     // Right-column sections show a muted "off" hint in the caption while switched off (prototype CAST BAR state).
@@ -149,14 +151,14 @@ public sealed partial class Plugin
     }
 
     // ── header status (the ONE status builder) ────────────────────────────────────────────────────────────────────
-    // "N of 6 overlays on": Target HUD, Buffs/debuffs (on unless Display = Off), Threat, Cast bar, Boss timers, Nearby.
+    // "N of 6 overlays on": Target HUD, Buffs/debuffs, Threat, Cast bar, Boss timers, Nearby.
     // None on → its own sentence. FmtCache → no allocation unless the count or the language changes.
     private const int OverlayCount = 6;
     private readonly FmtCache _statusFmt = new();
 
     private string SettingsStatus()
     {
-        int n = (_targetHudOn ? 1 : 0) + (_buffStyle != 2 ? 1 : 0) + (_showThreat ? 1 : 0) + (_castBarOn ? 1 : 0)
+        int n = (_targetHudOn ? 1 : 0) + (_buffStyle == 1 ? 1 : 0) + (_showThreat ? 1 : 0) + (_castBarOn ? 1 : 0)
               + (_bossTimerOn ? 1 : 0) + (_nearbyOn ? 1 : 0);
         return n == 0 ? _loc.T("tl.status.none") : _statusFmt.Get(_loc.T("tl.status.overlays"), n, OverlayCount);
     }
