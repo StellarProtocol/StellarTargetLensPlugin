@@ -25,20 +25,18 @@ public sealed partial class Plugin
         ToolHeader("header-24.png", () => _loc.T("tl.settings.title"), SettingsStatus),   // Plugin.Settings.Rows.cs
         new RowElement(new HudElement[]
         {
-            new CellElement(new ColumnElement(new HudElement[]
-            {
-                BuildTargetHudSection(),
-                BuildBuffsSection(),
-            }, Gap: SettingsGap), Width: SettingsColumnW),
-            new CellElement(new ColumnElement(new HudElement[]
-            {
-                BuildThreatSection(),
-                BuildCastBarSection(),
-                BuildBossTimerSection(),
-                BuildNearbySection(),
-            }, Gap: SettingsGap), Width: SettingsColumnW),
+            SettingsColumn(BuildTargetHudSection(), BuildBuffsSection()),
+            SettingsColumn(BuildThreatSection(), BuildCastBarSection(), BuildBossTimerSection(), BuildNearbySection()),
         }, Gap: SettingsGap),
     }, Gap: SettingsGap);
+
+    // A fixed-width, TOP-aligned column. A Row centres its children vertically (framework AddLayout: rows MiddleLeft)
+    // and neither RowElement nor CellElement has a vertical-alignment option (SDK 2.34), so the shorter left column sat
+    // centred with a gap above it. The always-true Fill Conditional gives the cell flexibleHeight, so the row stretches
+    // it to the row's full height, and the column inside stays top-anchored (Column = UpperLeft) — the same trick as
+    // CrestFrame. The window is content-sized, so there is no extra slack anywhere else.
+    private static HudElement SettingsColumn(params HudElement[] sections) => new CellElement(
+        new ConditionalElement(() => true, new ColumnElement(sections, Gap: SettingsGap), Fill: true), Width: SettingsColumnW);
 
     // ── left column ───────────────────────────────────────────────────────────────────────────────────────────────
     // TARGET HUD: caption + hint + the On/Off chip, and the boss-bar size (Slim 1× / Medium 1.5×, the default / Large 2×).
@@ -54,7 +52,9 @@ public sealed partial class Plugin
         }),
         new HudElement[]
         {
-            ChoiceRow("tl.row.barSize", "tl.help.barSize", "tl.section.targetHud", new HudElement[]
+            // "Size" like every other section ("Boss bar size" was cut to "Boss ba…" beside the 3 chips: the label gets
+            // ≈ 65 px of the 333 px column). The "?" help still says it's the boss bar.
+            ChoiceRow("tl.row.size", "tl.help.barSize", "tl.section.targetHud", new HudElement[]
             {
                 ChoiceChip("tl.choice.slim",   () => _hudSize == 0, () => SetHudBarSize(0), BarSizeChipW),
                 ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
