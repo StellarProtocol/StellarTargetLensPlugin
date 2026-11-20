@@ -24,12 +24,6 @@ public sealed partial class Plugin
     private float          _castScale        = 1f;
     private long           _castScaleDirtyAtMs = -1; // Environment.TickCount64 of the last slider change; -1 = idle
 
-    // Cast bar reads best warm + centered: amber for a normal cast, red-orange for the danger variant. BarElement's
-    // colour arg is a ColorRgba VALUE (no Func overload), so two mutually-exclusive bars carry the two colours,
-    // gated by a ConditionalElement on the Danger flag — the same trick the break bar uses.
-    private static readonly ColorRgba CastNormalColor = new(0.95f, 0.80f, 0.30f, 1f); // amber / yellow
-    private static readonly ColorRgba CastDangerColor = new(0.92f, 0.32f, 0.20f, 1f); // red-orange (danger cast)
-
     // Layout-edit sample: a danger cast mid-flight (30% filled) so the icon slot and the name-inside bar have content
     // to size and place against when nothing is actually casting. skillId 0 → no icon resolves, the icon cell still
     // reserves its width.
@@ -47,13 +41,13 @@ public sealed partial class Plugin
 
         // Base (1×) dims scaled by _castScale so the single-row window grows with the bar (not resizable → no band).
         float castW = 340f * _castScale;   // a conventional cast-bar width — mini icon + one row bar (name inside + time)
-        float castH = 34f  * _castScale;   // one row: bar(18) + column padding(16) → content-fit (buff/boss-timer row style)
+        float castH = 28f * _castScale + 2f * ChromePad;   // one row (28 px icon) + chrome padding → content-fit anyway
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1377, y=120). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 1377f;
-        float y = 120f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19: x=1281, y=151, w=340), Top-anchored:
+        // offset from the horizontally centred spot (1281 − (2560 − 340)/2 = 171), so it stays under the centred boss
+        // bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = 171f;
+        float y = 151f;
 
         _castBarWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -64,6 +58,8 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                Anchor = WindowAnchor.Top,
+                BackgroundColor = () => CrestPlateFill(OvCast), BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, a live target, AND that
                 // target actively casting. Layout-edit mode overrides so the overlay (with example data) can be
                 // positioned without a live cast.
@@ -115,45 +111,27 @@ public sealed partial class Plugin
         RebuildCastBarWindow();
     }
 
-    // Single row = [mini icon] [ count-UP bar: <skill name> ....... <percent> ], exactly the buff-list /
-    // boss-timer row style (Plugin.BuffListWindow.cs / Plugin.BossTimerWindow.cs): the skill NAME sits inside-left
-    // (ellipsised), the percent inside-right (SecondaryLabel), and the bar FILLS UP (the game's own fraction,
-    // 0→1) to match the game's cast bar direction. The normal-amber / danger-red split rides two mutually-
-    // exclusive bars gated by a ConditionalElement (BarElement's colour arg is a VALUE, not a Func — same trick the
-    // buff-list debuff/buff split uses).
+    // Crest look (Plugin.Crest.cs), no caption: [28 px icon, 2 px gold ring] [24 px cast-gold bar: skill name left,
+    // "2.9 / 5.3s" right] on the plate. A DANGER cast (ESingGuideType.MonsterDanger) swaps the plate ring to 2 px red
+    // (the panel can't glow outward), the icon ring to red and the fill to HP red with a red glow, and prefixes "! ".
+    // The two fills are bar variants (a gradient is fixed at build) shown by the Danger flag. Sizes scale with _castScale.
     private HudElement BuildCastBarWindowRoot()
     {
-        // Icon px, icon cell width, bar height, name/time font, and the icon↔bar gap scale together by _castScale so
-        // the single row grows coherently; baked here at build time (SetCastScale rebuilds the window to re-apply).
         float sc     = _castScale;
-        int   iconPx = (int)System.Math.Round(18 * sc);
-        float cellW  = 22f * sc;
-        float barH   = 18f * sc;
+        int   iconPx = (int)System.Math.Round(28 * sc);
+        float barH   = 24f * sc;
         int   fontPx = (int)System.Math.Round(13 * sc);
-        float rowGap = 6f * sc;
-
-        var normalBar = new BarElement(() => CastFraction(), CastNormalColor, () => CastNameLine())
+        var normal = CrestBar(() => CastFraction(), GradCast, () => CastNameLine(), () => CastTimeLabel(), barH, fontPx, sc);
+        var danger = CrestBar(() => CastFraction(), GradHp, () => CastNameLine(), () => CastTimeLabel(), barH, fontPx, sc)
+            with { FillGlow = CrestDanger with { A = 0.8f }, GlowRadius = 6f * sc };
+        var bars = CrestBarRings(BarVariants(barH, (normal, () => !CastCur().Danger), (danger, () => CastCur().Danger)), sc);
+        var icon = CrestIcon(() => GetCastIcon(), () => _castUv, iconPx,
+            () => CastCur().Danger ? CrestDanger : CrestRingNeutral, 2f);
+        return CrestFrame(new RowElement(new HudElement[]
         {
-            Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-            LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
-        };
-        var dangerBar = new BarElement(() => CastFraction(), CastDangerColor, () => CastNameLine())
-        {
-            Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-            LabelInside = true, SecondaryLabel = () => CastTimeLabel(),
-        };
-        return new ColumnElement(new HudElement[]
-        {
-            new RowElement(new HudElement[]
-            {
-                new CellElement(
-                    new GameTextureElement(() => GetCastIcon(), iconPx, iconPx, () => _castUv),
-                    Width: cellW),
-                new CellElement(
-                    new ConditionalElement(() => CastCur().Danger, dangerBar, normalBar),
-                    Weight: 1f),
-            }, Gap: rowGap),
-        }, Gap: 0f) { Padding = 8 };
+            new CellElement(icon, Width: iconPx),
+            new CellElement(bars, Weight: 1f),
+        }, Gap: 6f * sc), OvCast, danger: () => CastCur().Danger);
     }
 
     // ── Getters (layout-edit example data wins only when NOT actually casting) ──
@@ -185,11 +163,16 @@ public sealed partial class Plugin
     // "elapsed / total" (same Truncate(StripTags(...)) approach the buff-list / boss-timer rows use). The name budget
     // leaves room for the time reserve at the 340 default width.
     private const int CastNameBudget = 30;   // name chars before ellipsis (mirrors BuffListNameBudget's fixed cap)
+    private string? _castNameSrc; private bool _castNameDanger; private string _castName = "";
     private string CastNameLine()
     {
-        var n = CastCur().SkillName;
-        if (string.IsNullOrEmpty(n)) return _loc.T("tl.cast.casting");
-        return Truncate(StripTags(n), CastNameBudget);
+        var c = CastCur();
+        var n = c.SkillName;
+        if (ReferenceEquals(n, _castNameSrc) && c.Danger == _castNameDanger && _castName.Length > 0) return _castName;
+        _castNameSrc = n; _castNameDanger = c.Danger;
+        var core = string.IsNullOrEmpty(n) ? _loc.T("tl.cast.casting") : Truncate(StripTags(n), CastNameBudget);
+        _castName = c.Danger ? "! " + core : core;   // danger prefix (Crest spec)
+        return _castName;
     }
 
     // COUNT UP: the local elapsed/total fill 0..1 (direction-corrected in TargetInfoTracker.Cast.cs).
@@ -197,9 +180,14 @@ public sealed partial class Plugin
 
     // Right-side label = elapsed / total SECONDS, counting up. SetSingGuide's maxValue is confirmed to be the total
     // cast time in seconds, and elapsed is ticked locally, so this is a real "1.6 / 5.3s" readout.
+    private int _castTimeE = -1, _castTimeT = -1; private string _castTime = "";
     private string CastTimeLabel()
     {
         var c = CastCur();
-        return $"{c.ElapsedSec:F1} / {c.TotalSec:F1}s";
+        int e = (int)(c.ElapsedSec * 10f), t = (int)(c.TotalSec * 10f);
+        if (e == _castTimeE && t == _castTimeT) return _castTime;   // rebuilt only when a shown tenth changes
+        _castTimeE = e; _castTimeT = t;
+        _castTime = $"{e / 10f:F1} / {t / 10f:F1}s";
+        return _castTime;
     }
 }

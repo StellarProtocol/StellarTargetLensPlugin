@@ -161,7 +161,9 @@ public sealed partial class Plugin
     {
         int i = _selOffset + slot;
         if (i >= SelFiltCount) { _selUv[slot] = default; return null; }
-        return _services.GameAssets.LoadBuffIcon(SelFiltIds[i], out _selUv[slot]);
+        int id = SelFiltIds[i];
+        return _services.GameAssets.LoadBuffIcon(id, out _selUv[slot])
+            ?? EffectPlaceholder(id, debuff: _activeTab == 0, SelIconSize, otherArt: false, ref _selUv[slot]);   // icon-less → placeholder
     }
 
     private string SlotName(int slot)

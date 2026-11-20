@@ -41,11 +41,11 @@ public sealed partial class Plugin
         float threatW = 260f * _threatScale;   // narrower than the Target HUD (name + a compact aggro bar + %)
         float threatH = 150f * _threatScale;   // Title + ThreatSlots rows + gaps + padding (fixed; auto-fits)
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=1716, y=4). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 1716f;
-        float y = 4f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19: x=1653, y=13, w=260), Top-anchored: X is
+        // the offset from the horizontally centred spot (1653 − (2560 − 260)/2 = 503), so it keeps its place beside the
+        // centred boss bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = 503f;
+        float y = 13f;
 
         _threatWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -56,6 +56,8 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                Anchor = WindowAnchor.Top,
+                BackgroundColor = () => CrestPlateFill(OvThreat), BackgroundCornerRadius = CrestPlateRadius,   // Crest plate (Plugin.Crest.cs)
                 // Auto-show: mirrors the Target HUD's gate (in-world, no menu/loading/blocking overlay, live target)
                 // plus the show_threat toggle AND a non-empty hate list so it never shows an empty box. Layout-edit
                 // mode overrides so the window can be positioned against its example rows without a live target.
@@ -107,51 +109,39 @@ public sealed partial class Plugin
         RebuildThreatWindow();
     }
 
-    // Title + a fixed pool of ThreatSlots rows (name + compact aggro bar + %). Each row collapses to zero height
-    // when it has no live entry (ConditionalElement on ThreatRowVisible), so short lists don't leave blank rows.
-    // Row dimensions (name font, bar height + label font, bar cell width, gaps) scale together by _threatScale so
-    // the list grows coherently; baked here at build time (SetThreatScale rebuilds the window to re-apply a change).
-    // The TITLE is intentionally kept at a fixed size (excluded from scaling) so only the per-player rows grow.
+    // Crest look (Plugin.Crest.cs): caption "THREAT" + "N players" + hairline, then up to ThreatSlots rows of
+    // [rank medallion] [full-width amber bar: name left, share % right]; your row carries a 1.5 px pale-gold ring.
+    // Rows collapse when empty (ConditionalElement on ThreatRowVisible). Row sizes scale with _threatScale (baked at
+    // build; SetThreatScale rebuilds); the caption keeps its fixed size.
     private HudElement BuildThreatWindowRoot()
     {
-        float sc       = _threatScale;
-        int   titlePx  = 14;   // fixed — title glyph does NOT scale with _threatScale (only the rows do)
-        int   namePx   = (int)System.Math.Round(14 * sc);
-        // barH matches the styled NAME cell's line box (the emphasis TextElement sets no preferredHeight, so it
-        // takes the TMP glyph's natural line box ≈ 18px at 14px font — taller than the old 14px bar). RowElement
-        // height = tallest child, so a shorter bar floated vertically-centred inside the taller name box, and that
-        // above/below whitespace read as extra inter-row gap. Sizing the bar to the name box (like the sibling
-        // Buff/Boss lists, which also use 18f*sc) makes each row one tight unit; colGap trimmed 3→2 for a touch more.
-        float barH     = 18f * sc;
-        int   barFont  = (int)System.Math.Round(12 * sc);
-        float barCellW = 84f * sc;
-        float rowGap   = 6f * sc;
-        float colGap   = 2f * sc;
+        float sc    = _threatScale;
+        float barH  = 20f * sc;
+        int   font  = (int)System.Math.Round(12 * sc);
+        int   med   = MedalPx(sc);
+        // Medallion art for this size, resolved once (the Live image compares by reference).
+        var gold = CachedPng($"crest-med-gold-{med}.png");   var silver = CachedPng($"crest-med-silver-{med}.png");
+        var bronze = CachedPng($"crest-med-bronze-{med}.png"); var plain = CachedPng($"crest-med-plain-{med}.png");
+        int numPx = (int)System.Math.Round(11 * sc);
 
         var rows = new HudElement[ThreatSlots + 1];
-        // Wrapped so the "Show aggro title" toggle collapses the header live (rows shift up; window keeps its size).
-        rows[0] = new ConditionalElement(() => _showThreatTitle,
-            new TextElement(() => _loc.T("tl.window.threat"), Color: MutedColor, Emphasis: true, FontSize: titlePx));
+        rows[0] = CrestCaption("tl.cap.threat", () => _threatHint.Get(_loc.T("tl.hint.players"), ThreatTotal()), () => _showThreatTitle);
         for (int s = 0; s < ThreatSlots; s++)
         {
             int idx = s;
-            var row = new RowElement(new HudElement[]
-            {
-                new CellElement(
-                    // Emphasis:true routes the name through the framework's STYLED text path (TryBuildEmphasisText →
-                    // StyledSize), which honours TextElement.FontSize. The plain menu-surface text path
-                    // (WindowBuilder.BuildText) hardcodes Scaled(14) and DROPS FontSize entirely, so without this the
-                    // name never grew with _threatScale while the bar + % (bar LabelFontSize path) did. Bold also
-                    // matches the title's styling. (The bar labels don't need it — LabelFontSize is honoured directly.)
-                    new TextElement(() => ThreatName(idx), Color: () => ThreatRowColor(idx), FontSize: namePx, NoWrap: true, Emphasis: true),
-                    Weight: 1f),
-                new CellElement(
-                    new BarElement(() => ThreatFraction(idx), ThreatFill, () => ThreatPct(idx))
-                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont, LabelInside = true },
-                    Width: barCellW),
-            }, Gap: rowGap);
+            var medal = new LayerStackElement(
+                new ImageElement(() => ThreatRank(idx) switch { 1 => gold, 2 => silver, 3 => bronze, _ => plain }, med, med) { Live = true, Crisp = true },
+                new StackLayer(new TextElement(() => RankText(ThreatRank(idx)), Color: () => ThreatRank(idx) <= 3 ? MedalInk : CrestSoft,
+                    Align: TextAlign.Center, FontSize: numPx, NoWrap: true) { Bold = true, CenterCaps = true }));
+            var bar = CrestBarRings(
+                CrestBar(() => ThreatFraction(idx), GradAmber, () => ThreatName(idx), () => ThreatPct(idx), barH, font, sc),
+                sc, () => ThreatIsLocal(idx), CrestGoldHi);
+            var row = new RowElement(new HudElement[] { new CellElement(medal, Width: med), new CellElement(bar, Weight: 1f) }, Gap: 6f * sc);
             rows[s + 1] = new ConditionalElement(() => ThreatRowVisible(idx), row);
         }
-        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
+        return CrestFrame(new ColumnElement(rows, Gap: 3f * sc), OvThreat);
     }
+
+    private static readonly ColorRgba MedalInk = CrestHex(0x1a1408);
+    private readonly CountHint _threatHint = new();
 }

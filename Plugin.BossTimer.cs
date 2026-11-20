@@ -45,8 +45,7 @@ public sealed partial class Plugin
     }
 
     // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned MM:SS.
-    // The window is width-resizable, so the char budget scales with the current width (mirrors EffTilesPerLine's
-    // width-aware pattern) — drag wider to reveal more of a long skill name.
+    // The window is width-resizable, so the char budget scales with the current width (width-aware) — drag wider to reveal more of a long skill name.
     private string BossTimerName(int idx)
     {
         var list = BossTimerRows();
@@ -70,22 +69,49 @@ public sealed partial class Plugin
     }
 
     // MM:SS countdown inside the bar (right), zero-padded to match the game (e.g. 00:08, 01:05). Floors the
-    // remaining seconds (a decreasing timer shows "00:08" through the whole 8th second).
+    // remaining seconds; cached per slot, rebuilt only when the shown second changes.
+    private readonly int[] _bossTimerSecVal = NewIntArray(BossTimerSlots, -1);
+    private readonly string[] _bossTimerSecStr = NewStrArray(BossTimerSlots);
     private string BossTimerTime(int idx)
     {
         var list = BossTimerRows();
         if (idx >= list.Count) return "";
         int total = (int)list[idx].RemainSec;
         if (total < 0) total = 0;
-        return $"{total / 60:00}:{total % 60:00}";
+        if (total != _bossTimerSecVal[idx]) { _bossTimerSecVal[idx] = total; _bossTimerSecStr[idx] = $"{total / 60:00}:{total % 60:00}"; }
+        return _bossTimerSecStr[idx];
     }
 
-    // Bar fill = remaining-time fraction (soonest cast drains toward 0). TotalSec ≤ 0 → empty.
+    // Bar fill = how close the skill is (Crest: the bar FILLS as the cast approaches) — 1 − remaining/total.
     private float BossTimerFraction(int idx)
     {
         var list = BossTimerRows();
         if (idx >= list.Count) return 0f;
         var e = list[idx];
-        return e.TotalSec > 0f ? Clamp01(e.RemainSec / e.TotalSec) : 0f;
+        return e.TotalSec > 0f ? Clamp01(1f - e.RemainSec / e.TotalSec) : 0f;
     }
+
+    // Under BossTimerUrgentSec the row shows the HP-red bar variant.
+    private bool BossTimerUrgent(int idx)
+    {
+        var list = BossTimerRows();
+        return idx < list.Count && list[idx].RemainSec < BossTimerUrgentSec;
+    }
+
+    // Caption hint "next in 2.1s" for the soonest skill (the list is sorted soonest first); rebuilt per shown tenth.
+    private int _btHintVal = int.MinValue; private string? _btHintTpl; private string _btHint = "";
+    private string BossTimerHint()
+    {
+        var list = BossTimerRows();
+        if (list.Count == 0) return "";
+        int t = (int)(System.Math.Max(0f, list[0].RemainSec) * 10f);
+        string tpl = _loc.T("tl.hint.nextIn");
+        if (t == _btHintVal && ReferenceEquals(tpl, _btHintTpl)) return _btHint;
+        _btHintVal = t; _btHintTpl = tpl;
+        _btHint = string.Format(tpl, (t / 10f).ToString("F1"));
+        return _btHint;
+    }
+
+    private static int[] NewIntArray(int n, int v) { var a = new int[n]; for (int i = 0; i < n; i++) a[i] = v; return a; }
+    private static string[] NewStrArray(int n) { var a = new string[n]; for (int i = 0; i < n; i++) a[i] = ""; return a; }
 }

@@ -7,7 +7,7 @@ timers, and a live cast bar — all as draggable overlays.
 ## Features
 
 - **Target HUD** — live HP, shield ("armor"), and the boss **break (stagger) gauge**, plus name, level, rank, and distance to target.
-- **Buff & debuff tracker** — every effect on your target with real icons + timers. Display as **Classic tiles**, a resizable **List** window, or turn it **Off**.
+- **Buff & debuff tracker** — every effect on your target with real icons + timers. Shown in a resizable **Target Effects** window, or turn it **Off**.
   - Filter by **who applied it** — you / other players / the monster's own & unknown-source effects.
   - **★ marks your own** effects; **hide permanent** (no-timer) effects; **show hidden** internal effects.
   - **Select effects…** picker to choose exactly which buffs/debuffs appear, with a curated **★ Recommended** list floated to the top.

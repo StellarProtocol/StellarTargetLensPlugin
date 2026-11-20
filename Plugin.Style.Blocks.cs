@@ -112,7 +112,7 @@ public sealed partial class Plugin
     private HudElement OnOffChip(Func<bool> get, Action<bool> set, Func<bool>? enabled = null)
         => StateChip(() => _loc.T("tl.chip.on"), () => _loc.T("tl.chip.off"), get, () => set(!get()), OnOffChipW, enabled);
 
-    // One choice of a segmented setting (Display: Classic / List / Off …): on = the current value.
+    // One choice of a segmented setting (Threat display: Top aggro / List …): on = the current value.
     private HudElement ChoiceChip(string labelKey, Func<bool> selected, Action pick, float width, Func<bool>? enabled = null)
     {
         Func<string> label = () => _loc.T(labelKey);

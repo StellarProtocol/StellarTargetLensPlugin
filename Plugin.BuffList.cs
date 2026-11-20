@@ -5,29 +5,28 @@ using Stellar.Abstractions.Services;
 namespace Stellar.TargetLens;
 
 // Data layer for the "List" buff/debuff STYLE — the standalone Target Effects window (Plugin.BuffListWindow.cs).
-// Owns the buff-display-style config field, its OWN icon-UV pool (separate from the Target HUD tile pool so the two
-// styles can be mounted at once without stomping each other's atlas rects), and the per-row getters the window's
-// rows bind to. Reuses the Target HUD's effect resolution (CurEffects / ResolveEffectName) so the per-source
-// (mine/others/monster) and ShowHidden filters and the layout-edit example data apply to the list automatically — the shared icon-priority
-// logic is extracted here as ResolveEffectIcon and called by BOTH the classic tiles and this list.
+// Owns the buff-display-style config field, its OWN icon-UV pool, and the per-row getters the window's rows bind to.
+// Reuses the Target HUD's effect source (CurEffects) so the per-source (mine/others/monster) and ShowHidden filters and
+// the layout-edit example data apply to the list automatically. The shared name / icon resolution (ResolveEffectName,
+// ResolveEffectIcon) lives here too; the effect tooltip and the Select Effects picker use the same priorities.
 public sealed partial class Plugin
 {
-    // Buff/debuff display style: 0 = Classic (tiles inside the Target HUD), 1 = List (this window, the default),
-    // 2 = Off (no buff/debuff display at all — neither tiles nor the list window).
+    // Buff/debuff display style ("buff_style"): 1 = List (this window, the default), 2 = Off (no buff/debuff display).
+    // 0 was "Classic" (tiles inside the Target HUD) — removed 2026-11-20; a saved 0 loads as List (RegisterBuffListWindow).
     // Loaded in RegisterBuffListWindow (mirrors how _showThreat is loaded in RegisterThreatWindow).
     private int _buffStyle = 1;
 
-    // Target Effects LIST row-size multiplier (List style ONLY; Classic tiles ignore it). Scales the row's icon px,
+    // Target Effects LIST row-size multiplier. Scales the row's icon px,
     // icon cell width, bar height, label font, and the row stride together so the list grows coherently. Loaded in
     // RegisterBuffListWindow alongside _buffStyle; changed live via SetListScale, which rebuilds the window Root
     // because the element sizes are baked at build time. Default 1.0 = unchanged.
     private float _listScale = 1f;
 
     private const int BuffListSlots = 16;                                  // fixed row pool (max rows at full height)
-    private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — do NOT share the tile pool's _hudEffUv
-    // bar (18) + column gap (3) at scale 1; one row's vertical footprint. Scaled by _listScale so the height-driven
+    private readonly UvRect[] _buffListUv = new UvRect[BuffListSlots];      // OWN pool — the tooltip keeps its own _tipUv
+    // Crest bar (20) + row gap (3) at scale 1; one row's vertical footprint. Scaled by _listScale so the height-driven
     // row count stays correct as rows grow — BuffListVisibleRows floors the window height by this stride.
-    private float BuffRowStride => 21f * _listScale;
+    private float BuffRowStride => 23f * _listScale;
     private const int   BuffListNameBudget = 22;                          // name chars before it's ellipsised (leaves room for the time)
     private const string BuffListMarker    = "★ ";                         // leading "yours" marker on self-cast rows
 
@@ -35,14 +34,14 @@ public sealed partial class Plugin
     // the boss enrage-TIMER buff family ("Power Sealed" and siblings) applied by a boss mechanic skill: each buff's
     // own table icon is correct (buff_talent_skill_330301) but the applying skill's icon is unrelated, so the normal
     // source-skill-first order picks the wrong art. All ten share the buff_talent_skill_330301 (enrage-timer) icon
-    // (verified against Resources/BuffTable.json).
+    // (verified against the game's BuffTable data).
     private static readonly HashSet<int> ForceOwnBuffIcon = new()
     {
         501706, 501710, 501712, 501714, 851388, 880803, 881613, 974342, 995191, 2100106,
     };
 
-    // Shared icon-priority resolution used by BOTH the classic tiles (GetHudEffectIcon) and the list rows
-    // (GetBuffListIcon). The source-skill icon swap is meaningful ONLY for a PLAYER-applied effect — for those we
+    // Shared icon-priority resolution used by the list rows (GetBuffListIcon), the effect tooltip and the Select
+    // Effects rows (all via EffectIcon, Plugin.EffectPlaceholder.cs). The source-skill icon swap is meaningful ONLY for a PLAYER-applied effect — for those we
     // want the applying class-skill's art (e.g. "your Firestorm" shows your skill icon). A boss's OWN buff (source =
     // the current target monster) or an effect with an UNKNOWN source (no caster) has no meaningful player skill to
     // swap to, so its own table icon is the correct art. Order:
@@ -52,6 +51,14 @@ public sealed partial class Plugin
     //   4. fallback → the buff's own icon.
     // LoadImagineIcon is tried DIRECTLY on the source skill (it misses leveled imagine cast ids when gated on
     // GetImagineForSkill); fall through on null so an effect whose skill icon doesn't load still shows its buff icon.
+    // Display-name priority: manual override → English game text (fw GameText) → tracker's live (Chinese) name.
+    private string ResolveEffectName(TargetBuffRow r)
+    {
+        if (EffectOverrides.TryGetValue(r.BaseId, out var ov) && !string.IsNullOrEmpty(ov.Name)) return ov.Name;
+        if (GameTextName(r.BaseId) is { Length: > 0 } tn) return tn;
+        return r.Name ?? "";
+    }
+
     private object? ResolveEffectIcon(TargetBuffRow r, out UvRect uv)
     {
         uv = default;
@@ -86,84 +93,144 @@ public sealed partial class Plugin
     }
 
     // ── Height-driven row count ──────────────────────────────────────────────────
-    // More window height ⇒ more visible rows (the window is height-resizable). Mirrors the threat window's
-    // height-based sizing: subtract the title line + column padding, then floor by the per-row stride.
+    // More window height ⇒ more visible rows (the window is height-resizable): subtract the chrome padding + the Crest
+    // caption block, then floor by the per-row stride (+ one gap: the last row has none below it).
     private int BuffListVisibleRows()
     {
         float h = _buffListWindow != null ? _buffListWindow.Rect.Height : 0f;
-        if (h < 1f) h = 208f;                       // pre-mount fallback ≈ the default (8-row) height
-        const float titleReserve = 24f;             // title TextElement (~14px) + its column gap
-        const float padding      = 16f;             // ColumnElement padding (8 top + 8 bottom)
-        int rows = (int)((h - titleReserve - padding) / BuffRowStride);
+        if (h < 1f) h = BuffListFixedH + 8f * BuffRowStride;   // pre-mount fallback ≈ 8 rows
+        int rows = (int)((h - BuffListFixedH + 3f * _listScale) / BuffRowStride);
         return System.Math.Clamp(rows, 1, BuffListSlots);
     }
 
+    // ── List order (Crest): debuffs first, then buffs, each in arrival order. Frame-gated, reuses one list. ──
+    private int _listOrderFrame = -1;
+    private readonly List<TargetBuffRow> _listOrder = new();
+    private int _listDebuffs, _listBuffs;
+    private bool _listIsExample;   // _listOrder holds the layout-edit sample rows (set by ListEffects, same frame gate)
+
+    // Layout edit: the list shows its sample rows whenever the real (filtered) list is empty — no target, a target
+    // with no effects, or everything filtered out — like the Cast bar (CastShowExample). Keying on the Target HUD's
+    // ShowExample (no target only) left the window with 0 rows when a live target had no effects, and with the
+    // caption off CrestHugFrame draws nothing at all, so there was nothing to see or place. Real effects still win.
+    private IReadOnlyList<TargetBuffRow> ListEffects()
+    {
+        int f = UnityEngine.Time.frameCount;
+        if (f == _listOrderFrame) return _listOrder;
+        _listOrderFrame = f;
+        var all = CurEffects();
+        _listIsExample = ShowExample;
+        FillListOrder(all);
+        if (_listOrder.Count == 0 && _services.Windows.IsLayoutEditing)
+        {
+            _listIsExample = true;
+            FillListOrder(ExampleEffectsNow());
+        }
+        return _listOrder;
+    }
+
+    private void FillListOrder(IReadOnlyList<TargetBuffRow> all)
+    {
+        _listOrder.Clear();
+        for (int i = 0; i < all.Count; i++) if (all[i].BuffType == 0) _listOrder.Add(all[i]);
+        _listDebuffs = _listOrder.Count;
+        for (int i = 0; i < all.Count; i++) if (all[i].BuffType != 0) _listOrder.Add(all[i]);
+        _listBuffs = _listOrder.Count - _listDebuffs;
+    }
+
     // A row renders only when it has a live effect AND fits at the current window height.
-    private bool BuffListRowVisible(int idx) => idx < BuffListVisibleRows() && idx < CurEffects().Count;
+    private bool BuffListRowVisible(int idx) => idx < BuffListVisibleRows() && idx < ListEffects().Count;
+
+    // Caption hint "2 debuffs · 2 buffs": rebuilt only when a count or the language template changes.
+    private int _blHintD = -1, _blHintB = -1; private string? _blHintTpl; private string _blHint = "";
+    private string BuffListHint()
+    {
+        ListEffects();
+        string tpl = _loc.T("tl.hint.effects");
+        if (_listDebuffs == _blHintD && _listBuffs == _blHintB && ReferenceEquals(tpl, _blHintTpl)) return _blHint;
+        _blHintD = _listDebuffs; _blHintB = _listBuffs; _blHintTpl = tpl;
+        _blHint = string.Format(tpl, _listDebuffs, _listBuffs);
+        return _blHint;
+    }
 
     // ── Per-row getters (all guarded; never throw) ───────────────────────────────
 
     private object? GetBuffListIcon(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) { _buffListUv[idx] = default; return null; }
-        return ResolveEffectIcon(list[idx], out _buffListUv[idx]);
+        return EffectIcon(list[idx], 20f * _listScale, out _buffListUv[idx]);   // icon-less → placeholder inside the ring
     }
 
-    // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast). SAME predicate as
-    // the classic tiles' HudEffectIsMine — FireUuid matches the local entity id (guarded; local==0 → false). Lets a
-    // user tell which effects THEY applied when "Show effects others applied" is on.
+    // ★-marker predicate: true when the row's effect was cast by the LOCAL PLAYER (self-cast) — FireUuid matches the
+    // local entity id (guarded; local==0 → false).
     private bool BuffListIsMine(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) return false;
         long local = _services.CombatSnapshot.LocalEntityId.Value;
         return local != 0 && list[idx].FireUuid == local;
     }
 
-    // Name inside the bar (left). Tag-stripped and ellipsised so it can't collide with the right-aligned time.
-    // Prefixes, in order: "★ " (self-cast, same star meaning as the classic tiles) then "{Layer}x " when the effect
-    // has 2+ stacks (same Layer field the classic tiles badge with ×N; never shown for 0/1 so we don't print "1x").
-    // The full prefix is built FIRST, then the resolved name is truncated against a budget already reduced by the
-    // prefix width (clamped to a small minimum), so the markers can never push the name into the right-aligned time.
+    // Name inside the bar (left): "★ " (self-cast) then "{Layer}x " (2+ stacks), then the resolved name truncated
+    // against a budget already reduced by the prefix. Cached per slot: rebuilt only when the row's effect, its stack
+    // count or the self-cast flag changes (the resolved name is stable per effect), so polls don't allocate.
+    private readonly TargetBuffRow?[] _blNameRow = new TargetBuffRow?[BuffListSlots];
+    private readonly int[] _blNameKey = new int[BuffListSlots];
+    private readonly string[] _blName = NewStrArray(BuffListSlots);
     private string BuffListName(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) return "";
-        string prefix = BuffListIsMine(idx) ? BuffListMarker : "";
-        int layer = list[idx].Layer;
-        if (layer >= 2) prefix += $"{layer}x ";
+        var r = list[idx];
+        bool mine = BuffListIsMine(idx);
+        int key = r.Layer * 2 + (mine ? 1 : 0);
+        if (ReferenceEquals(r, _blNameRow[idx]) && key == _blNameKey[idx]) return _blName[idx];
+        string prefix = mine ? BuffListMarker : "";
+        if (r.Layer >= 2) prefix += $"{r.Layer}x ";
         int budget = System.Math.Max(BuffListNameBudget - prefix.Length, 4);
-        string name = Truncate(StripTags(ResolveEffectName(list[idx])), budget);
-        return prefix + name;
+        _blNameRow[idx] = r; _blNameKey[idx] = key;
+        _blName[idx] = prefix + Truncate(StripTags(ResolveEffectName(r)), budget);
+        return _blName[idx];
     }
 
-    // Compact remaining time inside the bar (right): hours / minutes / seconds; permanent (RemainSec < 0) → blank.
+    // Compact remaining time inside the bar (right): hours / minutes / seconds; permanent (RemainSec < 0) → "—".
+    // Cached per slot by (unit, value) so the 10 Hz poll only builds a string when the shown value changes.
+    private readonly int[] _blTimeKey = NewIntArray(BuffListSlots, int.MinValue);
+    private readonly string[] _blTime = NewStrArray(BuffListSlots);
     private string BuffListTime(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) return "";
         float rem = list[idx].RemainSec;
-        if (rem < 0f) return "";                                   // permanent
-        if (rem >= 3600f) return $"{(int)(rem / 3600f)}h";
-        if (rem >= 60f)   return $"{(int)(rem / 60f)}m";
-        return $"{(int)rem}s";
+        int key = rem < 0f ? -1 : rem >= 3600f ? 2_000_000 + (int)(rem / 3600f) : rem >= 60f ? 1_000_000 + (int)(rem / 60f) : (int)rem;
+        if (key == _blTimeKey[idx]) return _blTime[idx];
+        _blTimeKey[idx] = key;
+        _blTime[idx] = rem < 0f ? "—" : rem >= 3600f ? $"{(int)(rem / 3600f)}h" : rem >= 60f ? $"{(int)(rem / 60f)}m" : $"{(int)rem}s";
+        return _blTime[idx];
     }
 
     // Bar fill = remaining-time fraction (same as the tiles' HudEffectFraction). Permanent = full.
     private float BuffListFraction(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) return 0f;
         var r = list[idx];
         return r.Duration > 0 ? Clamp01(r.RemainSec / (r.Duration / 1000f)) : 1f;
     }
 
-    // Bar colour by type: debuff (BuffType == 0) → red/orange, everything else → green. Drives the per-row
-    // Then/Else bar split in the window root (BarElement's colour arg is a VALUE, not a Func).
+    // A permanent effect's full bar is drawn at ~55 % alpha (FillColorFn multiplies the gradient); others untinted.
+    private static readonly ColorRgba PermanentTint = new(1f, 1f, 1f, 0.55f);
+    private ColorRgba? BuffListTint(int idx)
+    {
+        var list = ListEffects();
+        return idx < list.Count && (list[idx].Duration <= 0 || list[idx].RemainSec < 0f) ? PermanentTint : null;
+    }
+
+    // Debuff (BuffType == 0) → the orange ring + debuff bar; everything else → green.
     private bool BuffListIsDebuff(int idx)
     {
-        var list = CurEffects();
+        var list = ListEffects();
         if (idx >= list.Count) return false;
         return list[idx].BuffType == 0;
     }

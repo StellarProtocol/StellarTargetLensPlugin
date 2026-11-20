@@ -10,7 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Stellar.TargetLens</RootNamespace>
     <AssemblyName>Stellar.TargetLens</AssemblyName>
-    <Version>1.3.0</Version>
+    <Version>2.0.0</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -18,26 +18,33 @@
   <!-- Framework 2.2.0 ships the BarElement overlay props (Overlay01 / OverlayColor / OverlayInFront) on the
        published NuGet, so the earlier local-source override is gone — compile straight against the packages.
        Stellar.Plugin.InteropRefs has no 2.2.0 (build-assets package, versions independently; unchanged since 2.0.0). -->
+  <!-- 2.34.0: SlicedImageElement, StackLayer.Rect, ImageElement.Crisp and the Modern-bar gradient/trail/stripes/ticks
+       opt-ins used by the boss-bar Target HUD. -->
   <!-- Bumped to 2.3.0 for the i18n-ko launcher-tile review fix: LauncherEntry.TitleProvider (live-localized
        tile title, needed so Title can stay the fixed pin-identity literal) was added in Abstractions 2.3.0 —
        additive/binary-compatible per framework/CHANGELOG.md [2.3.0]. -->
   <ItemGroup>
-    <PackageReference Include="Stellar.Abstractions"       Version="2.30.0" />
-    <PackageReference Include="Stellar.PluginContracts"    Version="2.30.0" />
-    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.30.0" />
+    <PackageReference Include="Stellar.Abstractions"       Version="2.34.0" />
+    <PackageReference Include="Stellar.PluginContracts"    Version="2.34.0" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.34.0" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources/targetlens-icon.png" LogicalName="Stellar.TargetLens.targetlens-icon.png" />
-    <!-- English-translated buff name/description dump (game data is Chinese). Loaded by TranslatedBuffText.
-         Kept inside the project's Resources/ (colocated with the icon) so it can't be lost as a loose Mod-root file. -->
-    <EmbeddedResource Include="Resources\BuffTable.json" LogicalName="Stellar.TargetLens.BuffTable.json" />
     <!-- Nearby Monsters hard-lock padlock: white glyphs pre-drawn per size (tools/gen_lock_icons.py), tinted gold at draw. -->
     <EmbeddedResource Include="Resources/lock-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <!-- Settings header crosshair glyph: white, pre-drawn per size (tools/gen_header_icon.py), on the live accent tile. -->
     <EmbeddedResource Include="Resources/header-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
     <!-- Target Effects (effect picker) header star glyph: white, pre-drawn per size (tools/gen_star_icon.py). -->
     <EmbeddedResource Include="Resources/star-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Target HUD "Celestial Crest" v3 boss-bar art (user-approved 2026-11-18): 3-slice frame + rank badges at 2× (Large),
+         @1.5x (Medium) and @1x (Slim); portrait-disc-<px>: the blue backing disc under the portrait (tools/gen_portrait_disc.py, Pillow, 8x supersampled). -->
+    <EmbeddedResource Include="Resources/celestial_crest_*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Resources/portrait-disc-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- portrait-placeholder-<px>: generic monster silhouette in the disc when a target has no portrait (tools/gen_portrait_placeholder.py). -->
+    <EmbeddedResource Include="Resources/portrait-placeholder-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
+    <!-- Crest overlay glyphs (diamond, hairline, rank medallions, BOSS/ELITE pills), pre-drawn per row size by tools/gen_crest_icons.py. -->
+    <EmbeddedResource Include="Resources/crest-*.png" LogicalName="Stellar.TargetLens.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

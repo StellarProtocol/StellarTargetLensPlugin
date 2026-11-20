@@ -26,12 +26,13 @@ public sealed partial class Plugin
 
     private const int NearbySlots = 8;   // fixed row pool (top-N cap in NearbyMonsterTracker)
 
-    private static readonly ColorRgba NearbyHpFill      = new(0.40f, 0.78f, 0.42f, 1f);  // green HP bar
-    private static readonly ColorRgba NearbyBossColor   = new(0.93f, 0.23f, 0.20f, 1f);  // red — boss rank fill
-    private static readonly ColorRgba NearbyEliteColor  = new(0.95f, 0.55f, 0.15f, 1f);  // dark orange — elite rank fill
-    private static readonly ColorRgba NearbyTargetColor = new(0.30f, 0.60f, 0.95f, 1f);  // azure — current-target fill (overrides rank; white name/HP% stay readable)
-    private static readonly ColorRgba NearbyLockGold    = new(1.00f, 0.82f, 0.40f, 1f);  // #ffd166 — hard-lock padlock tint (white glyph)
-    private static readonly ColorRgba NearbyLockClear   = new(1f, 1f, 1f, 0f);           // padlock slot when not locked: fully transparent
+    private static readonly ColorRgba NearbyLockGold  = CrestHex(0xf3dca0);       // hard-lock padlock tint (white glyph), Crest pale gold
+    private static readonly ColorRgba NearbyLockClear = new(1f, 1f, 1f, 0f);       // padlock slot when not locked: fully transparent
+    private static readonly ColorRgba NearbyTargetWash = new(80f / 255f, 160f / 255f, 1f, 0.25f);   // current target: pale blue over the empty part
+    private const float NearbyDistW = 36f;   // distance cell width at 1x
+
+    // Fixed BOSS/ELITE pill slot width for a row size (the pre-drawn pill for the nearest Crest step).
+    private static float NearbyPillW(float sc) => System.MathF.Round(40f * CrestSteps[CrestStep(sc)]);
 
     private void RegisterNearbyWindow()
     {
@@ -49,34 +50,21 @@ public sealed partial class Plugin
         _nearby.LockableRangeOnly = _nearbyLockableOnly;
 
         float sc = _nearbyScale;
-        float NearbyW = 320f * sc;   // name + HP bar + distance
-        // Title + NearbySlots rows + gaps + padding, scaled by sc so the default height grows with the rows. The window
-        // is now BOTH width- AND height-resizable (user asked to dial the size in live "for now"): DefaultRect height stays
-        // the all-8-rows height so it opens at today's size, but a height BAND (minH..maxH below) lets it drag taller/shorter.
-        // Note the row pool is FIXED at NearbySlots — the window does NOT reflow row count to the dragged height, so dragging
-        // taller just adds empty space below and shorter clips the bottom rows (acceptable for this manual-resize knob).
-        // BaseStride is the per-row vertical budget. Unlike the threat/boss lists, a Nearby row is wrapped in a
-        // SelectableElement (click-to-target), whose framework-fixed host VLG adds 8px of vertical padding around the
-        // bar (RectOffset(6,6,4,4) in WindowBuilder.Table.cs). So each row's on-screen box = barH + 8, and the real
-        // row-to-row rhythm = box + colGap. colGap is NEGATIVE (-7) in BuildNearbyWindowRoot to cancel that 8px down
-        // to a ~1px inter-bar gap, so the rhythm = (barH + 8) + colGap = (20 + 8) + (-7) = 21 at 1× — which is exactly
-        // BaseStride. Keep BaseStride == barH@1× + 1 (= 21); it MUST equal that rhythm so the locked height fits
-        // NearbySlots rows + title + padding. (At higher sc the fixed 8px/-7 drift ~1px/row, pooled harmlessly as
-        // bottom slack in the resizable band.)
-        const float TitleReserve = 24f, Pad = 16f, BaseStride = 21f;
-        float nearbyH = (TitleReserve + Pad + NearbySlots * BaseStride) * sc;   // ≈ 208 at 1× (DEFAULT open height = all 8 rows)
+        float NearbyW = 320f * sc;   // pill + name/HP bar + padlock + distance
+        // Rows are Bare selectables (no host padding), so the stride is the Crest bar (20) + the row gap (3). The default
+        // height = chrome padding + the (unscaled) caption block + all NearbySlots rows; the drag band runs from ~2 rows
+        // to double that. The row pool is FIXED (dragging taller adds empty plate below; shorter clips the bottom rows).
+        float rowsH   = (NearbySlots * 23f - 3f) * sc;
+        float nearbyH = 2f * ChromePad + 2f * PlatePadY + CaptionReserve + rowsH;   // ~249 at 1x (DEFAULT = all 8 rows)
         float minW    = 240f * sc;   // real drag floor, scaled with the rows
         float maxW    = 700f * sc;   // generous ceiling, scaled with the rows
-        // Height band: floor = title + ~2 rows so it can't collapse to nothing (≈ 82 at 1×); ceiling ≈ double the all-8-rows
-        // height (≈ 416 at 1×) for generous headroom. Both track the same scaled stride as nearbyH so they grow with the rows.
-        float minH    = (TitleReserve + Pad + 2 * BaseStride) * sc;
-        float maxH    = (TitleReserve + Pad + NearbySlots * BaseStride) * sc * 2f;
+        float minH    = 2f * ChromePad + 2f * PlatePadY + CaptionReserve + (2 * 23f - 3f) * sc;
+        float maxH    = nearbyH * 2f;
 
-        // Default position on the left side, clear of the other overlays' defaults (threat x=1716, boss-timer x=690).
-        // Fixed 1440p-calibrated pixel literals (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a
-        // path where ScreenWidth is 0, so 0*frac would collapse every window to x=0 — an absolute px restores right.
-        float x = 40f;
-        float y = 300f;
+        // Default position = the user-approved layout (2560x1440, 2026-11-19): x=12, y=303 from the top-left corner
+        // (WindowAnchor.TopLeft). A saved (user-moved) rect always wins over this.
+        float x = 12f;
+        float y = 303f;
 
         _nearbyWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -87,6 +75,7 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                Anchor = WindowAnchor.TopLeft,   // user-approved layout: x=12, y=303 from the top-left (2026-11-19)
                 // Width-resizable so longer names fit; height now ALSO drag-resizable within minH..maxH (user dialing size in live).
                 Resizable = true, MinWidth = minW, MaxWidth = maxW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: in-world, no menu/loading/blocking overlay, the toggle on, AND a non-empty nearby list so
@@ -141,106 +130,70 @@ public sealed partial class Plugin
         RebuildNearbyWindow();
     }
 
-    // Title + a fixed pool of NearbySlots rows. Each row = [Modern HP bar — name inside-left, HP% inside-right] [padlock] [distance].
-    // Rows collapse to zero height when they have no live entry (ConditionalElement on NearbyRowVisible). Row dimensions scale together
-    // by _nearbyScale; the TITLE is kept at a fixed size (excluded from scaling) so only the rows grow.
+    // Crest look (Plugin.Crest.cs): caption "NEARBY" + "N monsters" + hairline, then a fixed pool of NearbySlots rows:
+    // [40 px rank slot: BOSS / ELITE pill PNG, empty for normal] [bar with the REAL HP fill — boss HP red, elite orange,
+    // normal green; your current target blue + a pale blue wash over the empty part + a 1.5 px white ring] [14 px
+    // padlock slot, pale gold while the game is locked on] [distance, soft]. The four fills are bar variants (a gradient
+    // is fixed at build). Click a row → target it (as before). Row sizes scale with _nearbyScale; the caption is fixed.
     private HudElement BuildNearbyWindowRoot()
     {
-        float sc       = _nearbyScale;
-        int   titlePx  = 14;   // fixed — title glyph does NOT scale with _nearbyScale (only the rows do)
-        float barH     = 20f * sc;   // row content height (Modern bar + inside-label line box) — midpoint of 18 (squished) and 22 (too tall)
-        int   barFont  = (int)System.Math.Round(12 * sc);   // the bar's LabelFontSize — drives BOTH inside labels (name + HP%) and the distance text
-        float distCellW = 44f * sc;
-        int   lockPx   = NearbyLockPx(sc);       // padlock glyph + its slot width: nearest pre-drawn size to 14 × sc
-        var   lockPng  = NearbyLockPng(lockPx);  // cached bytes; null (missing resource) → slot stays clear
-        float rowGap   = 6f * sc;   // horizontal gap BETWEEN cells within a row (name | bar | distance)
-        // Vertical gap BETWEEN rows. NEGATIVE on purpose. Each row is wrapped in a SelectableElement (click-to-target),
-        // whose framework-fixed host VLG adds RectOffset(6,6,4,4) = 8px of vertical padding (4 top + 4 bottom) around the
-        // bar — see WindowBuilder.Table.cs BuildSelectable. THAT 8px, not this gap, was the big dark space between bars
-        // (threat/boss rows aren't wrapped in a Selectable, so they pack tight with a small positive gap). There is no
-        // plugin-side knob to drop that padding, so we CANCEL it with a negative column spacing: the on-screen gap between
-        // two bars = 8 (selectable pad) + colGap, so colGap = -7 leaves ≈1px between bars regardless of monster count.
-        // FIXED (not *sc): the 8px padding is a fixed pixel constant, so the cancellation must be fixed too — a scaled
-        // colGap would over-cancel and overlap the bars at higher row-size scales. The selectable boxes overlap by ~7px
-        // in their (empty) padding zones, but the visible green bars stay 1px apart and each bar sits solely inside its
-        // own box, so click-to-target stays unambiguous on the bars. See the BaseStride note in RegisterNearbyWindow.
-        float colGap   = -7f;
+        float sc      = _nearbyScale;
+        float barH    = 20f * sc;
+        int   barFont = (int)System.Math.Round(12 * sc);
+        int   lockPx  = NearbyLockPx(sc);       // padlock glyph + its slot width: nearest pre-drawn size to 14 × sc
+        var   lockPng = NearbyLockPng(lockPx);  // cached bytes; null (missing resource) → slot stays clear
+        int   step    = CrestStep(sc);
+        int   pillW   = (int)NearbyPillW(sc), pillH = (int)System.MathF.Round(16f * CrestSteps[step]);
+        var   bossPill  = CachedPng($"crest-pill-boss-{step}.png");
+        var   elitePill = CachedPng($"crest-pill-elite-{step}.png");
 
         var rows = new HudElement[NearbySlots + 1];
-        // Wrapped so the "Show nearby list title" toggle collapses the header live (rows shift up; window keeps its size).
-        // The title carries NO selectable padding, so the uniform negative colGap (above) would otherwise pull the first
-        // bar up INTO the title text. Give the title a matching 4px inset (ColumnElement Padding=4 → 8px vertical, same as
-        // the selectable rows' RectOffset top+bottom) so the title↔first-row gap lands at the same ≈1px as row↔row, and
-        // the title glyph sits 4px below the window top in lockstep with the rows' 4px bar inset. Collapses cleanly when
-        // the "show title" toggle is off (whole wrapper goes inactive → rows shift fully up).
-        rows[0] = new ConditionalElement(() => _showNearbyTitle,
-            new ColumnElement(new HudElement[]
-            {
-                new TextElement(() => _loc.T("tl.window.nearby"), Color: MutedColor, Emphasis: true, FontSize: titlePx),
-            }, Gap: 0f) { Padding = 4 });
+        rows[0] = CrestCaption("tl.cap.nearby", () => NearbyHint(), () => _showNearbyTitle);
         for (int s = 0; s < NearbySlots; s++)
         {
             int idx = s;
+            System.Func<string> name = () => NearbyName(idx), pct = () => NearbyHpPct(idx);
+            System.Func<float> hp = () => NearbyFraction(idx);
+            var target = CrestBar(hp, GradBlue, name, pct, barH, barFont, sc) with { Trail01 = () => 1f, TrailColor = NearbyTargetWash };
+            var bars = BarVariants(barH,
+                (target, () => NearbyIsTarget(idx)),
+                (CrestBar(hp, GradHp,    name, pct, barH, barFont, sc), () => !NearbyIsTarget(idx) && NearbyIsBoss(idx)),
+                (CrestBar(hp, GradElite, name, pct, barH, barFont, sc), () => !NearbyIsTarget(idx) && NearbyIsElite(idx)),
+                (CrestBar(hp, GradGreen, name, pct, barH, barFont, sc), () => !NearbyIsTarget(idx) && !NearbyIsBoss(idx) && !NearbyIsElite(idx)));
             var row = new RowElement(new HudElement[]
             {
-                // The HP bar fills the row width (Weight:1). The monster NAME is the bar's inside-LEFT primary label
-                // and the HP% the inside-RIGHT SecondaryLabel (Modern dual-overlay). The framework's Modern label uses
-                // HorizontalWrapMode.Overflow and is NOT masked to the track, so a long name would SPILL past the bar —
-                // NearbyName() pre-truncates to a width-aware budget and appends an ellipsis so it can't overflow. The
-                // rank tint (boss red / elite orange) is carried by the bar FILL, not the text: FillColorFn — a Func the
-                // framework calls per row — overrides the static green NearbyHpFill when non-null, so a recycled slot
-                // re-colours its fill when its occupant changes rank (null → the static green fallback). The current-TARGET
-                // row (NearbyIsTarget) overrides rank with a blue fill so the locked monster is obvious at a glance — this is
-                // ADDITIONAL to the SelectableElement's Selected accent tint on the same row (the blue is on the fill, the
-                // tint on the row background, so they reinforce rather than clash). The NAME and the HP% SecondaryLabel both
-                // stay at the framework default (white); HP amount reads from fill length + the %.
-                new CellElement(
-                    new BarElement(() => NearbyFraction(idx), NearbyHpFill, () => NearbyName(idx))
-                    { Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = barFont,
-                      LabelInside = true, FillColorFn = () => NearbyIsTarget(idx) ? (ColorRgba?)NearbyTargetColor : NearbyRowColor(idx), SecondaryLabel = () => NearbyHpPct(idx) },
-                    Weight: 1f),
-                // Hard-lock slot: FIXED width, always present — the padlock only toggles its tint (gold ↔ fully clear),
-                // so the bar never changes width when a lock engages/releases (no layout jump). Hard lock = the game's
-                // lock-on (ZWorld.LockTargetUuid) from either the lock key or a row click. The Row wrapper keeps the
-                // square glyph from being width-stretched by the cell (WindowBuilder-Patterns: cell force-expands width)
-                // and centres it; the outer row centres it vertically.
-                new CellElement(
-                    new RowElement(new HudElement[]
-                    {
-                        new ImageElement(() => lockPng!, lockPx, lockPx)
-                        { Tint = () => lockPng != null && NearbyIsLocked(idx) ? NearbyLockGold : NearbyLockClear },
-                    }, Gap: 0f, Justify: RowJustify.Center),
-                    Width: lockPx),
-                new CellElement(
-                    new TextElement(() => NearbyDist(idx), Color: MutedColor, FontSize: barFont),
-                    Width: distCellW),
-            }, Gap: rowGap);
-            // Left-click a row → set the player's real in-game combat target to that monster (OnClick runs on the Unity
-            // main thread, so the tracker's ForceSetTarget call is safe direct; SetGameTarget no-ops on uuid 0, i.e. a
-            // collapsed/empty row). Selected: the framework's standard 3-state accent tint washes the row that matches
-            // the live current target (self-syncing via CurrentTargetUuid — NearbyIsTarget is false for uuid 0).
-            //
-            // ⭐ SelectableElement stays WRAPPED INSIDE the ConditionalElement (verified 2026-09-28, do NOT invert this):
-            // ConditionalElement does NOT mount/unmount — WindowBuilder builds BOTH branches ONCE and CondBinding.Apply()
-            // only diff-guarded-SetActive-toggles them, and every WindowInteractionTicker hit-test guards
-            // `activeInHierarchy`. So a collapsed row's selectable is an INACTIVE GO — its raycast target is off and its
-            // hover is skipped: no per-frame churn AND no dead click-zone. Inverting to selectable(Cond(row)) would keep
-            // the selectable permanently ACTIVE with `bg.raycastTarget=true` + a full-width LayoutElement + a ≥8px VLG
-            // padding floor over a 0-height child → an invisible full-width strip that eats WORLD clicks. No BringToFront
-            // (opens from hidden in its own HUD ZCat) or FrontWindowBlocks (the ticker owns the selectable's hit-testing).
-            //
-            // ⚠️ Click is a no-op on the layout-editor sample rows (ExampleNearby, synthetic uuids 1..4) and, as
-            // defence-in-depth, during any layout edit: SetGameTarget would ForceSetTarget + LockTargetOrCancel a uuid
-            // that names no entity, and the game NREs inside TargetComp.fillSelectData (seen live with uuid=1).
+                // Rank pill (English BOSS / ELITE by design — a symbol). Normal: the slot stays, the pill is cleared.
+                new CellElement(new RowElement(new HudElement[]
+                {
+                    new ImageElement(() => NearbyIsElite(idx) ? elitePill : bossPill, pillW, pillH)
+                    { Live = true, Crisp = true, Tint = () => NearbyIsBoss(idx) || NearbyIsElite(idx) ? null : NearbyLockClear },
+                }, Gap: 0f, Justify: RowJustify.Center), Width: pillW),
+                new CellElement(CrestBarRings(bars, sc, () => NearbyIsTarget(idx), White), Weight: 1f),
+                // Hard-lock slot: fixed width, always present — only the tint toggles (no layout jump).
+                new CellElement(new RowElement(new HudElement[]
+                {
+                    new ImageElement(() => lockPng!, lockPx, lockPx)
+                    { Tint = () => lockPng != null && NearbyIsLocked(idx) ? NearbyLockGold : NearbyLockClear },
+                }, Gap: 0f, Justify: RowJustify.Center), Width: lockPx),
+                new CellElement(new TextElement(() => NearbyDist(idx), Color: () => CrestSoft, Align: TextAlign.Right, FontSize: barFont, NoWrap: true)
+                    { RichEmoji = true }, Width: NearbyDistW * sc),
+            }, Gap: 6f * sc);
+            // Left-click → target that monster (main thread; SetGameTarget no-ops on uuid 0). Bare: the click target is
+            // exactly the row (no host padding / square wash); the current target is shown by the blue bar + white ring.
+            // ⭐ The selectable stays INSIDE the ConditionalElement: a collapsed row's selectable is then an inactive GO
+            // (no raycast, no hover) — inverting it would leave an invisible strip that eats world clicks (2026-09-28).
+            // ⚠️ No-op on the layout-editor sample rows and during any layout edit: their synthetic uuids name no entity,
+            // and the game NREs inside TargetComp.fillSelectData (seen live with uuid=1).
             var selectable = new SelectableElement(row,
                 OnClick: () =>
                 {
                     if (_nearbyDispIsExample || _services.Windows.IsLayoutEditing) return;
                     _nearby.SetGameTarget(NearbyUuid(idx));
-                },
-                Selected: () => NearbyIsTarget(idx));
+                }) { Bare = true };
             rows[s + 1] = new ConditionalElement(() => NearbyRowVisible(idx), selectable);
         }
-        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
+        // Content-hugging plate (Plugin.Crest.cs): wraps the caption + the live rows, transparent below.
+        return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvNearby, () => _showNearbyTitle,
+            () => System.Math.Min(NearbyDisplay().Count, NearbySlots), NearbySlots, barH, sc);
     }
 }

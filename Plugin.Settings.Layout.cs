@@ -6,7 +6,8 @@ namespace Stellar.TargetLens;
 
 // Settings window body, house style — the approved prototype's "PROPOSED" block (targetlens-settings.html):
 //   ToolHeader: [40 px accent tile, white crosshair] [bold "Target Lens" / muted "N of 6 overlays on"]
-//   left column : TARGET HUD (header chip only) · BUFFS / DEBUFFS (Display chips, Show title, Size, SHOW filters, Select)
+//   left column : TARGET HUD (header chip + bar size) · BUFFS / DEBUFFS (header chip, Show title, Size, opacity, SHOW filters,
+//                 Select)
 //   right column: THREAT / AGGRO · CAST BAR · BOSS SKILL TIMERS · NEARBY MONSTERS (each: header On/Off chip + rows)
 // Every side effect is the one the old checkbox window had (same config keys, same SetVisible calls, same debounced
 // scale setters) — only the controls changed. Built ONCE; every Func re-pulls live state on the capped refresh.
@@ -24,23 +25,22 @@ public sealed partial class Plugin
         ToolHeader("header-24.png", () => _loc.T("tl.settings.title"), SettingsStatus),   // Plugin.Settings.Rows.cs
         new RowElement(new HudElement[]
         {
-            new CellElement(new ColumnElement(new HudElement[]
-            {
-                BuildTargetHudSection(),
-                BuildBuffsSection(),
-            }, Gap: SettingsGap), Width: SettingsColumnW),
-            new CellElement(new ColumnElement(new HudElement[]
-            {
-                BuildThreatSection(),
-                BuildCastBarSection(),
-                BuildBossTimerSection(),
-                BuildNearbySection(),
-            }, Gap: SettingsGap), Width: SettingsColumnW),
+            SettingsColumn(BuildTargetHudSection(), BuildBuffsSection()),
+            SettingsColumn(BuildThreatSection(), BuildCastBarSection(), BuildBossTimerSection(), BuildNearbySection()),
         }, Gap: SettingsGap),
     }, Gap: SettingsGap);
 
+    // A fixed-width, TOP-aligned column. A Row centres its children vertically (framework AddLayout: rows MiddleLeft)
+    // and neither RowElement nor CellElement has a vertical-alignment option (SDK 2.34), so the shorter left column sat
+    // centred with a gap above it. The always-true Fill Conditional gives the cell flexibleHeight, so the row stretches
+    // it to the row's full height, and the column inside stays top-anchored (Column = UpperLeft) — the same trick as
+    // CrestFrame. The window is content-sized, so there is no extra slack anywhere else.
+    private static HudElement SettingsColumn(params HudElement[] sections) => new CellElement(
+        new ConditionalElement(() => true, new ColumnElement(sections, Gap: SettingsGap), Fill: true), Width: SettingsColumnW);
+
     // ── left column ───────────────────────────────────────────────────────────────────────────────────────────────
-    // TARGET HUD: just the caption + hint + the On/Off chip (the HUD itself has no options here).
+    // TARGET HUD: caption + hint + the On/Off chip, and the boss-bar size (Slim 1× / Medium 1.5×, the default / Large 2×).
+    // A size change re-registers the HUD window (SetHudBarSize), keeping its position and width.
     private HudElement BuildTargetHudSection() => SectionPanel(() => _loc.T("tl.section.targetHud"),
         () => _loc.T("tl.hint.targetHud"),
         OnOffChip(() => _targetHudOn, v =>
@@ -50,63 +50,77 @@ public sealed partial class Plugin
             _cfg.Set<bool>("target_hud_on", v);
             _cfg.Save();
         }),
-        Array.Empty<HudElement>());
+        new HudElement[]
+        {
+            // "Size" like every other section ("Boss bar size" was cut to "Boss ba…" beside the 3 chips: the label gets
+            // ≈ 65 px of the 333 px column). The "?" help still says it's the boss bar.
+            ChoiceRow("tl.row.size", "tl.help.barSize", "tl.section.targetHud", new HudElement[]
+            {
+                ChoiceChip("tl.choice.slim",   () => _hudSize == 0, () => SetHudBarSize(0), BarSizeChipW),
+                ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
+                ChoiceChip("tl.choice.large",  () => _hudSize == 2, () => SetHudBarSize(2), BarSizeChipW),
+            }),
+            // Break text: what the break label shows — % / Value / Both (Plugin.TargetHud.BreakText.cs). Live, no rebuild.
+            ChoiceRow("tl.row.breakText", "tl.help.breakText", "tl.section.targetHud", new HudElement[]
+            {
+                ChoiceChip("tl.choice.pct",   () => _breakTextMode == 0, () => SetBreakTextMode(0), BreakPctChipW),
+                ChoiceChip("tl.choice.value", () => _breakTextMode == 1, () => SetBreakTextMode(1), BreakValueChipW),
+                ChoiceChip("tl.choice.both",  () => _breakTextMode == 2, () => SetBreakTextMode(2), BreakBothChipW),
+            }),
+        });
 
-    // BUFFS / DEBUFFS. No header chip: the Display choice (Classic / List / Off) is the on/off. "Show title" and "Size"
-    // only apply to the List window, so they are RECESSED (not hidden) unless Display = List. The SHOW filters and the
-    // effect picker apply to both Classic and List and stay live.
+    // BUFFS / DEBUFFS: header On/Off chip like the right-column sections (on = the Target Effects window, buff_style 1;
+    // off = no effect display, 2). Live: SetBuffsOn flips the window's visibility. While off, EVERY row is recessed
+    // (values kept), the SHOW filters and the effect picker included.
     private HudElement BuildBuffsSection()
     {
-        Func<bool> listMode = () => _buffStyle == 1;
-        return SectionPanel(() => _loc.T("tl.section.buffs"), () => _loc.T("tl.hint.buffs"), null, new HudElement[]
+        Func<bool> on = () => _buffStyle == 1;
+        return SectionPanel(() => _loc.T("tl.section.buffs"), () => SectionOffHint(_buffStyle == 1),
+            OnOffChip(on, SetBuffsOn), new HudElement[]
         {
-            ChoiceRow("tl.row.display", "tl.help.buffDisplay", "tl.section.buffs", new HudElement[]
-            {
-                ChoiceChip("tl.choice.classic", () => _buffStyle == 0, () => SetBuffStyle(0), BuffClassicChipW),
-                ChoiceChip("tl.choice.list",    () => _buffStyle == 1, () => SetBuffStyle(1), ListChipW),
-                ChoiceChip("tl.choice.off",     () => _buffStyle == 2, () => SetBuffStyle(2), OffChoiceChipW),
-            }),
             // "Show title" — the List window's header row. Live via the title's ConditionalElement (no window rebuild).
             ChipRow("tl.row.showTitle", "tl.help.buffTitle", "tl.section.buffs", () => _showEffectTitle, v =>
             {
                 _showEffectTitle = v;
                 _cfg.Set<bool>("show_effect_title", v);
                 _cfg.Save();
-            }, listMode),
-            // List-mode row size (1.0–2.5x): the drag only stashes the value + readout; the buff-list window is rebuilt
+            }, on),
+            // Row size (1.0–2.5x): the drag only stashes the value + readout; the buff-list window is rebuilt
             // ONCE after the slider settles (SetListScale → TickListScaleRebuild), so a live drag never tears it down.
-            SliderRow("tl.row.size", "tl.help.buffSize", "tl.section.buffs", () => _listScale, SetListScale, listMode),
-            SubCaption("tl.sub.show"),
+            SliderRow("tl.row.size", "tl.help.buffSize", "tl.section.buffs", () => _listScale, SetListScale, on),
+            // The List window's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+            PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.buffs", () => _overlayBg[OvEffects], SetOverlayBg(OvEffects), on),
+            SubCaption("tl.sub.show", on),
             ChipRow("tl.row.byMe", "tl.help.byMe", "tl.section.buffs", () => _showMine, v =>
             {
                 _showMine = v;
                 _targetBuff.ShowMine = v;
                 _cfg.Set<bool>("show_mine", v);
                 _cfg.Save();
-            }),
+            }, on),
             ChipRow("tl.row.byOthers", "tl.help.byOthers", "tl.section.buffs", () => _showOthers, v =>
             {
                 _showOthers = v;
                 _targetBuff.ShowOthers = v;
                 _cfg.Set<bool>("show_others", v);
                 _cfg.Save();
-            }),
+            }, on),
             ChipRow("tl.row.monster", "tl.help.monster", "tl.section.buffs", () => _showMonster, v =>
             {
                 _showMonster = v;
                 _targetBuff.ShowMonster = v;
                 _cfg.Set<bool>("show_monster", v);
                 _cfg.Save();
-            }),
-            ChipRow("tl.row.hidden", "tl.help.hidden", "tl.section.buffs", () => _showHidden, SetShowHidden),
+            }, on),
+            ChipRow("tl.row.hidden", "tl.help.hidden", "tl.section.buffs", () => _showHidden, SetShowHidden, on),
             ChipRow("tl.row.hidePermanent", "tl.help.hidePermanent", "tl.section.buffs", () => _hidePermanent, v =>
             {
                 _hidePermanent = v;
                 _targetBuff.HidePermanent = v;
                 _cfg.Set<bool>("hide_permanent", v);
                 _cfg.Save();
-            }),
-            SelectEffectsRow(),
+            }, on),
+            SelectEffectsRow(on),
         });
     }
 
@@ -141,6 +155,8 @@ public sealed partial class Plugin
                 }, on),
                 // Rebuilt ONCE after the slider settles (SetThreatScale → TickThreatScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.threatSize", "tl.section.threat", () => _threatScale, SetThreatScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.threat", () => _overlayBg[OvThreat], SetOverlayBg(OvThreat), on),
             });
     }
 
@@ -159,6 +175,8 @@ public sealed partial class Plugin
             {
                 // Rebuilt ONCE after the slider settles (SetCastScale → TickCastScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.castSize", "tl.section.castBar", () => _castScale, SetCastScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.castBar", () => _overlayBg[OvCast], SetOverlayBg(OvCast), on),
             });
     }
 
@@ -184,6 +202,8 @@ public sealed partial class Plugin
                 // Rebuilt ONCE after the slider settles (SetBossTimerScale → TickBossTimerScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.bossSize", "tl.section.bossTimers", () => _bossTimerScale,
                     SetBossTimerScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.bossTimers", () => _overlayBg[OvBoss], SetOverlayBg(OvBoss), on),
             });
     }
 
@@ -218,6 +238,8 @@ public sealed partial class Plugin
                     }, on),
                 // Rebuilt ONCE after the slider settles (SetNearbyScale → TickNearbyScaleRebuild).
                 SliderRow("tl.row.size", "tl.help.nearbySize", "tl.section.nearby", () => _nearbyScale, SetNearbyScale, on),
+                // This overlay's plate (navy fill + gold ring) opacity; 0 % = floating. Live, saved once the drag settles.
+                PercentSliderRow("tl.row.bgOpacity", "tl.help.bgOpacity", "tl.section.nearby", () => _overlayBg[OvNearby], SetOverlayBg(OvNearby), on),
             });
     }
 }

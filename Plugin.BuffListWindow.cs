@@ -3,7 +3,7 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.TargetLens;
 
-// Standalone "List" buff/debuff STYLE window — an alternative to the classic tile grid inside the Target HUD.
+// Standalone Target Effects window — the plugin's one buff/debuff display (the in-HUD "Classic" tiles were removed).
 // One row per active effect: [mini icon] [ time-bar: <name> ....... <time> ]. The bar's FILL is the remaining-time
 // fraction; the name sits inside-left (ellipsised) and the compact remaining time inside-right, exactly like the
 // Target HUD's HP bar (main label + SecondaryLabel, both LabelInside). Mirrors the threat window (Plugin.ThreatWindow.cs):
@@ -11,8 +11,8 @@ namespace Stellar.TargetLens;
 // placed without a live target. Row getters + the height-driven row count live in Plugin.BuffList.cs.
 //
 // Height-resizable: MORE height = MORE visible rows (BuffListVisibleRows() floors the drag-set height by the row
-// stride). Width-resizable too so long names have room. The two styles are mutually exclusive — this window only
-// renders while buff_style == 1 (List); in Classic mode it stays hidden and the Target HUD shows its tiles.
+// stride). Width-resizable too so long names have room. It renders while buff_style == 1 (Buffs / Debuffs on);
+// buff_style == 2 (off) keeps it hidden.
 public sealed partial class Plugin
 {
     private IWindowControl _buffListWindow = null!;   // registered in the ctor; auto-shows on target while in List style
@@ -23,37 +23,40 @@ public sealed partial class Plugin
 
     private void RegisterBuffListWindow()
     {
-        // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = List default).
+        // Persisted style drives both the window's initial visibility and its ShouldRender gate (1 = on, the default;
+        // 2 = off). A saved 0 is the removed "Classic" tiles mode → migrate it to the List window, persisted once.
+        // Anything else unknown also lands on 1 (on) so a stray value can't leave the effects silently missing.
         _buffStyle = _cfg.Get<int>("buff_style", 1);
-        // Row-size multiplier (List only). Baked into the element sizes below, so a live change re-registers the
+        if (_buffStyle != 1 && _buffStyle != 2)
+        {
+            _buffStyle = 1;
+            _cfg.Set<int>("buff_style", 1);
+            _cfg.Save();
+        }
+        // Row-size multiplier. Baked into the element sizes below, so a live change re-registers the
         // window (SetListScale → RebuildBuffListWindow). Clamped to the slider band so a stray config can't break layout.
         _listScale = System.Math.Clamp(_cfg.Get<float>("list_scale", 1f), 1f, 2.5f);
         // Show/hide the title row (default ON). Live via the title's ConditionalElement (no rebuild).
         _showEffectTitle = _cfg.Get<bool>("show_effect_title", true);
 
-        const float ListW = 300f;                 // 1× min width — enough for a mini icon + a name + a compact time
-        const float TitleReserve = 24f;           // title line + gap (matches BuffList.cs)
-        const float Pad          = 16f;           // ColumnElement padding (8*2)
-        const float BaseStride   = 21f;           // one row's footprint at 1× (BuffRowStride without the scale)
-        const int   MinRows      = 3;             // shortest useful list
-        const int   MaxRows      = BuffListSlots; // 16 — the pool ceiling
+        const float ListW   = 300f;           // 1× min width — enough for a mini icon + a name + a compact time
+        const int   MinRows = 3;              // shortest useful list
+        const int   MaxRows = BuffListSlots;  // 16 — the pool ceiling
 
-        // The WHOLE height band scales by _listScale so the resize cap grows WITH the rows — otherwise the 1× max
-        // would stop the user dragging tall enough to see many big rows. At 1× ≈ 103..376 (default 376); at 2× ≈
-        // 206..752 (default 752). The window stays user-resizable within this band (we never force the dragged size);
-        // BuffListVisibleRows floors the (fixed-overhead-subtracted) height by the SCALED stride, so the max still
-        // fits the full 16-row pool at any scale. Width scales too (below) so the fixed 22-char name budget still
-        // fits the larger font — a bigger row gets a proportionally wider window rather than clipping names.
-        float minH = (TitleReserve + Pad + MinRows * BaseStride) * _listScale;
-        float maxH = (TitleReserve + Pad + MaxRows * BaseStride) * _listScale;
-        float defH = maxH;   // out-of-box height = the full row pool at the current scale (top of the resize band)
-        float winW = ListW * _listScale;   // default + min width grow with scale so names keep their room at big fonts
+        // Height band = chrome padding + the (unscaled) Crest caption block + 3..16 rows at the SCALED stride, so the
+        // resize cap grows WITH the rows. The window stays user-resizable within this band (never forced);
+        // BuffListVisibleRows floors the dragged height by the same stride. Width scales so the name budget fits.
+        float minH = BuffListFixedH + MinRows * BuffRowStride - 3f * _listScale;
+        float maxH = BuffListFixedH + MaxRows * BuffRowStride - 3f * _listScale;
+        // Default height = the user-approved layout (239 at 1×, 2026-11-19), its row part scaled with the rows.
+        float defH = System.Math.Clamp(BuffListFixedH + (239f - BuffListFixedH) * _listScale, minH, maxH);
+        float winW = ListW * _listScale;
 
-        // Default position tuned in-game (user's saved 2560x1440 layout: x=690, y=73). Fixed 1440p-calibrated
-        // pixel X (NOT ScreenWidth*frac): "reset all HUD" restores DefaultRect from a path where ScreenWidth is 0,
-        // so 0*frac collapsed every window to x=0 — an absolute px restores correctly. y absolute. Own drag overrides.
-        float x = 690f;
-        float y = 73f;
+        // Default position = the user-approved layout (2560x1440: x=360, y=12, w=300), Top-anchored: X is the offset
+        // from the horizontally centred spot (360 − (2560 − 300)/2 = −770), so it keeps its place beside the centred
+        // boss bar at any resolution. A saved (user-moved) rect always wins over this.
+        float x = -770f;
+        float y = 12f;
 
         _buffListWindow = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
@@ -64,18 +67,18 @@ public sealed partial class Plugin
                 Style:       WindowPanelStyle.Borderless)
             {
                 Draggable = true, EditModeDragOnly = true, Closable = false, StartVisible = false,
+                Anchor = WindowAnchor.Top,
                 // Height-resizable (row count follows height); width-resizable for name room. Height clamped to the
                 // 3..16-row band so it can neither hide the title nor exceed the fixed slot pool.
                 Resizable = true, MinWidth = winW, MinHeight = minH, MaxHeight = maxH,
                 // Auto-show: mirrors the Target HUD gate (in-world, no menu/loading/blocking overlay, live target),
-                // plus the List style selected AND a non-empty effect list so it never shows an empty box. Layout-edit
-                // mode overrides so the window can be positioned against its example rows without a live target.
+                // plus Buffs / Debuffs switched on. With no effects the window stays mounted but draws nothing (its plate hugs
+                // the rows). Layout-edit mode overrides so it can be placed against its example rows.
                 ShouldRender = () => _services.Windows.IsLayoutEditing
                                   || (_services.ClientState.Phase == GamePhase.World
                                       && (_services.ClientState.UiState & (GameUIState.Loading | GameUIState.Blocking | GameUIState.AnyMenu)) == 0
                                       && _buffStyle == 1
-                                      && _targetInfo.Current.HasTarget
-                                      && CurEffects().Count > 0),
+                                      && _targetInfo.Current.HasTarget),
                 // Framework pre-build (fw 2.30.0): this window is Visible but held hidden by ShouldRender until a
                 // target with effects appears, and its first DRAWN apply built every row (~74 ms). The framework now
                 // fills it off-screen once in the world; with no target every row Conditional is false, so the rows
@@ -88,7 +91,7 @@ public sealed partial class Plugin
             OnClose: () => { }));
         _windows.Add(_buffListWindow);   // Dispose already loops _windows and Remove()s each
 
-        // Initial visibility from the persisted style (the settings dropdown flips it live via SetVisible).
+        // Initial visibility from the persisted style (the settings header chip flips it live via SetVisible).
         _buffListWindow.SetVisible(_buffStyle == 1);
     }
 
@@ -100,7 +103,7 @@ public sealed partial class Plugin
     //
     // We deliberately do NOT capture and restore IsShown. IsShown is "visible AND currently mounted", so at a rebuild
     // moment with no live target it reads false — restoring that would SetVisible(false) and leave the window OFF even
-    // after a target appears. This window's session-visibility is purely the List style, which RegisterBuffListWindow
+    // after a target appears. This window's session-visibility is purely buff_style, which RegisterBuffListWindow
     // already sets (SetVisible(_buffStyle == 1)); the ShouldRender gate re-shows it whenever a target is live.
     private void RebuildBuffListWindow()
     {
@@ -111,54 +114,61 @@ public sealed partial class Plugin
         if (rect.Width > 0f) _buffListWindow.SetRect(rect);
     }
 
-    // Title + a fixed pool of BuffListSlots rows. Each row = [mini icon] [ time-bar ]. The bar is split into two
-    // mutually-exclusive BarElements (debuff red/orange vs buff green) via a per-row ConditionalElement — BarElement's
-    // colour arg is a ColorRgba VALUE, not a Func, so the colour can't vary within one bar. Each row collapses to zero
-    // height when it has no live effect OR doesn't fit at the current height (ConditionalElement on BuffListRowVisible).
+    // Crest look (Plugin.Crest.cs): caption "TARGET EFFECTS" + "2 debuffs · 2 buffs" + hairline, then the empty-state
+    // line OR a fixed pool of BuffListSlots rows: [20 px icon, orange (debuff) / green (buff) ring] [bar: debuff /
+    // buff gradient — two variants, a gradient is fixed at build — name left ("★ " = yours), time right; a permanent
+    // effect = full bar at ~55 % alpha + "—"]. Debuffs first, then buffs (ListEffects). Rows collapse when empty or
+    // beyond the dragged height. Row sizes scale with _listScale (baked; SetListScale rebuilds); the caption is fixed.
     private HudElement BuildBuffListWindowRoot()
     {
-        // Row dimensions scale together by _listScale (List style only) so the list grows coherently: icon px, icon
-        // cell width, bar height, label font, the horizontal icon↔bar gap, and the per-row vertical gap (which, with
-        // the scaled bar height, reproduces the scaled BuffRowStride the height-driven row count is floored by).
-        // Baked here at build time — SetListScale rebuilds the window (RebuildBuffListWindow) to re-apply a new scale.
-        float sc      = _listScale;
-        int   iconPx  = (int)System.Math.Round(18 * sc);
-        float cellW   = 22f * sc;
-        float barH    = 18f * sc;
-        int   fontPx  = (int)System.Math.Round(13 * sc);
-        float rowGap  = 6f * sc;
-        float colGap  = 3f * sc;
+        float sc     = _listScale;
+        int   iconPx = (int)System.Math.Round(20 * sc);
+        float barH   = 20f * sc;
+        int   fontPx = (int)System.Math.Round(12 * sc);
 
         var rows = new HudElement[BuffListSlots + 1];
-        // Wrapped so the "Show effects title" toggle collapses the header live (rows shift up; window keeps its size).
-        rows[0] = new ConditionalElement(() => _showEffectTitle,
-            new TextElement(() => _loc.T("tl.window.bufflist"), Color: MutedColor, Emphasis: true, FontSize: 14));
+        rows[0] = CrestCaption("tl.cap.effects", () => BuffListHint(), () => _showEffectTitle);
         for (int s = 0; s < BuffListSlots; s++)
         {
             int idx = s;
-            var debuffBar = new BarElement(() => BuffListFraction(idx), DebuffAccent, () => BuffListName(idx))
-            {
-                Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-                LabelInside = true, SecondaryLabel = () => BuffListTime(idx),
-            };
-            var buffBar = new BarElement(() => BuffListFraction(idx), BuffAccent, () => BuffListName(idx))
-            {
-                Style = BarStyle.Modern, Height = barH, FillWidth = true, LabelFontSize = fontPx,
-                LabelInside = true, SecondaryLabel = () => BuffListTime(idx),
-            };
+            var debuffBar = CrestBar(() => BuffListFraction(idx), GradDebuff, () => BuffListName(idx), () => BuffListTime(idx), barH, fontPx, sc, () => BuffListTint(idx));
+            var buffBar   = CrestBar(() => BuffListFraction(idx), GradBuff,   () => BuffListName(idx), () => BuffListTime(idx), barH, fontPx, sc, () => BuffListTint(idx));
             var row = new RowElement(new HudElement[]
             {
-                new CellElement(
-                    new GameTextureElement(() => GetBuffListIcon(idx), iconPx, iconPx, () => _buffListUv[idx]),
-                    Width: cellW),
-                new CellElement(
-                    // Prebuild: both bar colours built ahead (only the active one would be, lazily).
-                    new ConditionalElement(() => BuffListIsDebuff(idx), debuffBar, buffBar) { Prebuild = true, PrebuildName = "tl.bufflist.bar" },
+                new CellElement(CrestIcon(() => GetBuffListIcon(idx), () => _buffListUv[idx], iconPx,
+                    () => BuffListIsDebuff(idx) ? CrestDebuffRing : CrestBuffRing), Width: iconPx),
+                new CellElement(CrestBarRings(BarVariants(barH, (debuffBar, () => BuffListIsDebuff(idx)), (buffBar, () => !BuffListIsDebuff(idx))), sc),
                     Weight: 1f),
-            }, Gap: rowGap);
+            }, Gap: 6f * sc);
+            // Left-click a row → the effect description pop-up beside it (issue #11; Plugin.TargetHudTooltip.cs). Same
+            // wrapper as the Nearby rows: Bare (no tint), and the window is NOT Passive, so uGUI already routes the click
+            // to the row — no extra hit-test. The real work is in OnClickWithRect (needs the row's rect to place the tip).
+            var clickable = new SelectableElement(row, OnClick: () => { })
+            {
+                Bare = true,
+                OnClickWithRect = r => OnBuffListRowClick(idx, r),
+            };
             // Prebuild: built in the background even while no row is live (the window pre-build's fill has no target).
-            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), row) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
+            rows[s + 1] = new ConditionalElement(() => BuffListRowVisible(idx), clickable) { Prebuild = true, PrebuildName = "tl.bufflist.row" };
         }
-        return new ColumnElement(rows, Gap: colGap) { Padding = 8 };
+        // Content-hugging plate; with no effects nothing draws at all (the window keeps its rect).
+        return CrestHugFrame(new ColumnElement(rows, Gap: 3f * sc), OvEffects, () => _showEffectTitle, () => BuffListShownRows(),
+            BuffListSlots, barH, sc);
+    }
+
+    // Window height that isn't rows: chrome padding + the plate padding + the caption block.
+    private const float BuffListFixedH = 2f * ChromePad + 2f * PlatePadY + CaptionReserve;
+    private int BuffListShownRows() => System.Math.Min(BuffListVisibleRows(), ListEffects().Count);
+
+    // Row click → resolve the slot to its effect NOW, in the list's own order (debuffs first, then buffs, filters
+    // applied — ListEffects), and hand the tooltip the row object itself, not an index: the tracker's All order differs
+    // from the list order, and a re-sort between clicks must not open a neighbour. Ignored in layout-edit mode (the
+    // rows are example data there and a press means drag; SelectableElement doesn't check edit mode itself).
+    private void OnBuffListRowClick(int idx, WindowRect rowPx)
+    {
+        if (_services.Windows.IsLayoutEditing) return;
+        var list = ListEffects();
+        if (_listIsExample || idx >= list.Count) return;   // same example condition the rows + caption use
+        OnTargetEffectClick(list[idx], rowPx);
     }
 }
