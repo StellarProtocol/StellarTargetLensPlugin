@@ -32,15 +32,17 @@ public sealed partial class Plugin
     private int _threatDispFrame = -1;
     private readonly List<TargetInfoTracker.ThreatEntry> _threatDisp = new();
 
-    // Representative sample shown while the layout editor is active and no monster is locked (mirrors ExampleEffects).
-    // Row 4 is Thai on purpose ("ผู้เล่น" = "Player": a sample name, not UI text — so it is not localized): it shows the Thai
-    // bar-label path (framework ThaiTmpTwin + its dark edge) without a Thai player in range.
+    // Representative sample shown in the layout editor whenever the live list is empty (mirrors the Effects list).
+    // One generic "Player" name per script on purpose (sample names, not UI text — so not localized), so the user can
+    // check every bar-label font path without such players in range: Latin, Thai (framework ThaiTmpTwin + its dark
+    // edge), Japanese and Hangul (CJK stays on the legacy Text). Exactly ThreatSlots rows, sorted DESC like the real list.
     private static readonly TargetInfoTracker.ThreatEntry[] ExampleThreat =
     {
-        new(1, "Vanguard",  8000, 0.62f, false),
-        new(2, "You",       3000, 0.23f, true),
-        new(3, "Mender",    1400, 0.11f, false),
-        new(4, "ผู้เล่น",     500, 0.04f, false),
+        new(1, "Vanguard",   4800, 0.48f, false),
+        new(2, "ผู้เล่น",      2200, 0.22f, false),
+        new(3, "You",        1500, 0.15f, true),
+        new(4, "プレイヤー", 1000, 0.10f, false),
+        new(5, "플레이어",    500, 0.05f, false),
     };
 
     private IReadOnlyList<TargetInfoTracker.ThreatEntry> ThreatDisplay()
@@ -51,13 +53,9 @@ public sealed partial class Plugin
         _threatDisp.Clear();
         _threatTotal = 0;
 
-        if (ShowExample)
-        {
-            _threatDisp.AddRange(ExampleThreat);
-            for (int i = 0; i < ExampleThreat.Length; i++) _threatRank[i] = i + 1;
-            _threatTotal = ExampleThreat.Length;
-            return _threatDisp;
-        }
+        // Layout edit with no target → the sample straight away (no live read). With a target whose live list is
+        // empty (no hate table yet) the sample is filled at the end instead, so there is always something to place.
+        if (ShowExample) return FillThreatExample();
 
         _ = Cur;   // poll _targetInfo this frame so LastTargetEntity is fresh before the threat read
         if (_targetInfo.TryGetThreatList(out var full) && full.Count > 0)
@@ -87,6 +85,17 @@ public sealed partial class Plugin
                 for (int i = n; i < full.Count; i++)
                     if (full[i].IsLocal) { _threatRank[_threatDisp.Count] = i + 1; _threatDisp.Add(full[i]); break; }
         }
+        if (_threatDisp.Count == 0 && _services.Windows.IsLayoutEditing) return FillThreatExample();
+        return _threatDisp;
+    }
+
+    // The layout-edit sample: all ThreatSlots rows in both display modes. Static data, no allocation.
+    private IReadOnlyList<TargetInfoTracker.ThreatEntry> FillThreatExample()
+    {
+        _threatDisp.Clear();
+        _threatDisp.AddRange(ExampleThreat);
+        for (int i = 0; i < ExampleThreat.Length; i++) _threatRank[i] = i + 1;
+        _threatTotal = ExampleThreat.Length;
         return _threatDisp;
     }
 
