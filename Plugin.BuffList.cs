@@ -107,19 +107,35 @@ public sealed partial class Plugin
     private int _listOrderFrame = -1;
     private readonly List<TargetBuffRow> _listOrder = new();
     private int _listDebuffs, _listBuffs;
+    private bool _listIsExample;   // _listOrder holds the layout-edit sample rows (set by ListEffects, same frame gate)
 
+    // Layout edit: the list shows its sample rows whenever the real (filtered) list is empty — no target, a target
+    // with no effects, or everything filtered out — like the Cast bar (CastShowExample). Keying on the Target HUD's
+    // ShowExample (no target only) left the window with 0 rows when a live target had no effects, and with the
+    // caption off CrestHugFrame draws nothing at all, so there was nothing to see or place. Real effects still win.
     private IReadOnlyList<TargetBuffRow> ListEffects()
     {
         int f = UnityEngine.Time.frameCount;
         if (f == _listOrderFrame) return _listOrder;
         _listOrderFrame = f;
-        _listOrder.Clear();
         var all = CurEffects();
+        _listIsExample = ShowExample;
+        FillListOrder(all);
+        if (_listOrder.Count == 0 && _services.Windows.IsLayoutEditing)
+        {
+            _listIsExample = true;
+            FillListOrder(ExampleEffectsNow());
+        }
+        return _listOrder;
+    }
+
+    private void FillListOrder(IReadOnlyList<TargetBuffRow> all)
+    {
+        _listOrder.Clear();
         for (int i = 0; i < all.Count; i++) if (all[i].BuffType == 0) _listOrder.Add(all[i]);
         _listDebuffs = _listOrder.Count;
         for (int i = 0; i < all.Count; i++) if (all[i].BuffType != 0) _listOrder.Add(all[i]);
         _listBuffs = _listOrder.Count - _listDebuffs;
-        return _listOrder;
     }
 
     // A row renders only when it has a live effect AND fits at the current window height.

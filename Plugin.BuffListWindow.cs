@@ -166,9 +166,9 @@ public sealed partial class Plugin
     // rows are example data there and a press means drag; SelectableElement doesn't check edit mode itself).
     private void OnBuffListRowClick(int idx, WindowRect rowPx)
     {
-        if (_services.Windows.IsLayoutEditing || ShowExample) return;
+        if (_services.Windows.IsLayoutEditing) return;
         var list = ListEffects();
-        if (idx >= list.Count) return;
+        if (_listIsExample || idx >= list.Count) return;   // same example condition the rows + caption use
         OnTargetEffectClick(list[idx], rowPx);
     }
 }

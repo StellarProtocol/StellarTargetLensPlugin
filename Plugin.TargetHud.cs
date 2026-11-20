@@ -148,7 +148,14 @@ public sealed partial class Plugin
     private IReadOnlyList<TargetBuffRow> CurEffects()
     {
         if (!ShowExample) { _targetBuff.Ensure(); return _targetBuff.All; }
-        long now = System.Environment.TickCount64;   // re-stamp so the sample captions read steady while editing
+        return ExampleEffectsNow();
+    }
+
+    // The sample rows, re-stamped so their captions read steady while editing. Also used by the Effects list, whose
+    // example condition is wider than ShowExample (it shows them whenever its real list is empty — ListEffects).
+    private static IReadOnlyList<TargetBuffRow> ExampleEffectsNow()
+    {
+        long now = System.Environment.TickCount64;
         foreach (var e in ExampleEffects) e.SnapTick = now;
         return ExampleEffects;
     }
