@@ -64,6 +64,7 @@
   "tl.hint.players": "ผู้เล่น {0} คน",
   "tl.hint.nextIn": "อีก {0} วิ",
   "tl.hint.effects": "ดีบัฟ {0} · บัฟ {1}",
+  "tl.tip.source": "ที่มา: {0}",
   "tl.hint.monsters": "มอนสเตอร์ {0} ตัว",
   "tl.row.bgOpacity": "ความทึบพื้นหลัง",
   "tl.help.bgOpacity": "ความทึบของแผ่นพื้นหลังสีเข้มและขอบสีทองของโอเวอร์เลย์นี้ 0% คือซ่อน",

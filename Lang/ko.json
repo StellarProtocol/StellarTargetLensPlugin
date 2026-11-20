@@ -64,6 +64,7 @@
   "tl.hint.players": "플레이어 {0}명",
   "tl.hint.nextIn": "다음까지 {0}초",
   "tl.hint.effects": "디버프 {0} · 버프 {1}",
+  "tl.tip.source": "출처: {0}",
   "tl.hint.monsters": "몬스터 {0}마리",
   "tl.row.bgOpacity": "배경 불투명도",
   "tl.help.bgOpacity": "이 오버레이의 어두운 판과 금색 테두리의 진하기입니다. 0%면 숨깁니다.",

@@ -64,6 +64,7 @@
   "tl.hint.players": "{0} pemain",
   "tl.hint.nextIn": "berikutnya {0} dtk",
   "tl.hint.effects": "{0} debuff · {1} buff",
+  "tl.tip.source": "Sumber: {0}",
   "tl.hint.monsters": "{0} monster",
   "tl.row.bgOpacity": "Opasitas latar",
   "tl.help.bgOpacity": "Seberapa pekat pelat gelap dan bingkai emas overlay ini. 0% menyembunyikannya.",

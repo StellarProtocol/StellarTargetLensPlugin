@@ -64,6 +64,7 @@
   "tl.hint.players": "{0} na player",
   "tl.hint.nextIn": "susunod sa {0}s",
   "tl.hint.effects": "{0} debuff · {1} buff",
+  "tl.tip.source": "Pinagmulan: {0}",
   "tl.hint.monsters": "{0} na monster",
   "tl.row.bgOpacity": "Opacity ng background",
   "tl.help.bgOpacity": "Gaano kakapal ang madilim na plato at gintong gilid ng overlay na ito. Itinatago ito ng 0%.",

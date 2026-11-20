@@ -97,7 +97,8 @@ public sealed partial class Plugin
         if (string.IsNullOrEmpty(_tipName)) _tipName = StripTags(r.Name);
         // Description priority: English game text → game data.
         _tipDesc = !string.IsNullOrEmpty(trDesc) ? StripTags(trDesc) : StripTags(info?.Description);
-        _tipSource = string.IsNullOrEmpty(r.SkillName) ? "" : $"Source: {r.SkillName}";
+        // Localized "Source: {0}" (Rule 10). Built once per click, not per frame.
+        _tipSource = string.IsNullOrEmpty(r.SkillName) ? "" : string.Format(_loc.T("tl.tip.source"), r.SkillName);
         _tipTex      = EffectIcon(r, 36f, out _tipUv);   // this row's icon (placeholder when it has none), at the tooltip's size
         _tipShownFor  = r;
         _tipShownBase = r.BaseId;

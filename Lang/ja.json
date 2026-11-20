@@ -64,6 +64,7 @@
   "tl.hint.players": "{0}人",
   "tl.hint.nextIn": "次まで{0}秒",
   "tl.hint.effects": "デバフ{0} · バフ{1}",
+  "tl.tip.source": "付与元: {0}",
   "tl.hint.monsters": "{0}体",
   "tl.row.bgOpacity": "背景の不透明度",
   "tl.help.bgOpacity": "このオーバーレイの暗いプレートと金の縁取りの濃さです。0%で非表示になります。",

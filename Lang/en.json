@@ -64,6 +64,7 @@
   "tl.hint.players": "{0} players",
   "tl.hint.nextIn": "next in {0}s",
   "tl.hint.effects": "{0} debuffs · {1} buffs",
+  "tl.tip.source": "Source: {0}",
   "tl.hint.monsters": "{0} monsters",
   "tl.row.bgOpacity": "Background opacity",
   "tl.help.bgOpacity": "How solid this overlay's dark plate and gold ring are. 0% hides them.",
