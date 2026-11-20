@@ -166,9 +166,14 @@ public sealed partial class Plugin
         // No OverlayGlow: the glow renders as a hard square cyan box around the band, at odds with the rounded bar.
     };
 
-    private HudElement BuildFrameBreakBar(GradientStop[] gradient, bool glow) => new BarElement(() => TargetHudBreakFraction(), Hex(0xffffff))
+    // The draining gauge carries the Break-text "Both" value ("350 / 500", centred, bold white + outline, font = gauge
+    // height: Medium 12 / Large 16; empty in other modes and at Slim — Plugin.TargetHud.BreakText.cs). The broken (glow)
+    // gauge has no label, so the text is gone while broken.
+    private HudElement BuildFrameBreakBar(GradientStop[] gradient, bool glow) => new BarElement(() => TargetHudBreakFraction(),
+        Hex(0xffffff), glow ? null : (System.Func<string>)(() => TargetHudBreakGaugeText()))
     {
         Style = BarStyle.Modern, Height = Geo.BrH, FillWidth = true,
+        LabelFontSize = (int)Geo.BrH, LabelAlign = TextAlign.Center, LabelOutline = true,
         TrackColorFn = () => FrameClear, FillGradient = gradient,
         Ticks = 10, TickColor = new ColorRgba(10f / 255f, 16f / 255f, 30f / 255f, 0.9f), TickWidth = 2f * Geo.Unit,
         FillGlow = glow ? Hex(0xffb84a, 0.9f) : null, GlowRadius = 6f * Geo.Unit,
@@ -283,11 +288,13 @@ public sealed partial class Plugin
     }
 
     // "BREAK 40%" while draining, "BROKEN 5.2s" while broken. Keyed on the shown number (+ state sign) and the
-    // localized template, so a language switch re-formats once.
+    // localized template, so a language switch re-formats once. Break text Value (or Both at Slim) → "BREAK 350 / 500"
+    // (own cache, Plugin.TargetHud.BreakText.cs); broken always shows the timer.
     private string TargetHudBreakText()
     {
         var s = Cur;
         bool broken = TargetHudBroken();
+        if (!broken && BreakCapShowsValue) return TargetHudBreakValueText(s);
         string tpl = _loc.T(broken ? "tl.hud.broken" : "tl.hud.break_pct");
         int v = broken ? -1 - (int)(_breakGauge.RemainingSec * 10f)
                        : (s.MaxStunned > 0 ? (int)System.Math.Round(100.0 * s.Stunned / s.MaxStunned) : 0);

@@ -60,6 +60,13 @@ public sealed partial class Plugin
                 ChoiceChip("tl.choice.medium", () => _hudSize == 1, () => SetHudBarSize(1), BarSizeMidChipW),
                 ChoiceChip("tl.choice.large",  () => _hudSize == 2, () => SetHudBarSize(2), BarSizeChipW),
             }),
+            // Break text: what the break label shows — % / Value / Both (Plugin.TargetHud.BreakText.cs). Live, no rebuild.
+            ChoiceRow("tl.row.breakText", "tl.help.breakText", "tl.section.targetHud", new HudElement[]
+            {
+                ChoiceChip("tl.choice.pct",   () => _breakTextMode == 0, () => SetBreakTextMode(0), BreakPctChipW),
+                ChoiceChip("tl.choice.value", () => _breakTextMode == 1, () => SetBreakTextMode(1), BreakValueChipW),
+                ChoiceChip("tl.choice.both",  () => _breakTextMode == 2, () => SetBreakTextMode(2), BreakBothChipW),
+            }),
         });
 
     // BUFFS / DEBUFFS: header On/Off chip like the right-column sections (on = the Target Effects window, buff_style 1;

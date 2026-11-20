@@ -19,6 +19,9 @@ public sealed partial class Plugin
     private const float BarSizeChipW     = 60f;   // Slim / Large (longest: id "Ramping" ≈ 52 at bold 13)
     private const float BarSizeMidChipW  = 84f;   // Medium (longest: fil "Katamtaman" ≈ 76 at bold 13)
     private const float TopAggroChipW    = 92f;
+    private const float BreakPctChipW    = 36f;   // "%"
+    private const float BreakValueChipW  = 52f;   // Value (longest: fil "Halaga" ≈ 43 at bold 13)
+    private const float BreakBothChipW   = 70f;   // Both (longest: id "Keduanya" ≈ 62 at bold 13)
     private const float ChoiceChipGap    = 4f;
     private const float SliderValueW     = 36f;   // "2.5x"
     private const float SelectPillLabelW = 120f;  // "Select effects…": fil "Pumili ng epekto…" ≈ 115 at bold 13

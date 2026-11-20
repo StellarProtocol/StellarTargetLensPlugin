@@ -53,6 +53,7 @@ public sealed partial class Plugin
         int size = _cfg.Get<int>("boss_bar_size", -1);
         if (size < 0) size = _cfg.Get<int>("hud_bar_size", 0) == 1 ? 2 : 1;
         _hudSize = System.Math.Clamp(size, 0, 2);
+        LoadBreakTextMode();   // "break_text" (Plugin.TargetHud.BreakText.cs)
 
         // MIN width = the art's two caps + a short middle (Slim 266 + 60, Medium 399 + 90, Large 532 + 120 — the badge
         // crosses the left seam and needs ≥ 40 / 60 / 80 px of middle) + padding. Defaults (frame width + 24 padding):
